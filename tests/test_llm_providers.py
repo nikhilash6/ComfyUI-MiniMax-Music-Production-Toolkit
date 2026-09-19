@@ -4,6 +4,7 @@ import asyncio
 import json
 import math
 import os
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -250,6 +251,25 @@ class ConfigurationRoutesTests(unittest.TestCase):
         self.assertEqual(self.call([]).status, 400)
         self.assertEqual(self.call({"action": "invalid"}).status, 400)
 
+    def test_the_route_stores_a_permanent_key_and_clear_removes_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            providers._KEYS.clear()
+            providers._SAVED.clear()
+            with patch.object(providers, "_saved_store_path", return_value=Path(directory) / "llm_api_keys.json"):
+                response = self.call({"action": "set_key", "backend": providers.MODES[1],
+                                      "local_provider": "LM Studio", "key": "test-secret", "permanent": True})
+                self.assertEqual(response.status, 200)
+                self.assertNotIn("test-secret", json.dumps(response.payload))
+                handle = response.payload["credential_id"]
+                self.assertEqual(providers.saved_key("http://127.0.0.1:1234/v1"), "test-secret")
+                providers._KEYS.clear()  # a ComfyUI restart
+                cleared = self.call({"action": "clear_key", "credential_id": handle,
+                                     "backend": providers.MODES[1], "local_provider": "LM Studio"})
+                self.assertEqual(cleared.status, 200)
+                self.assertEqual(providers.saved_key("http://127.0.0.1:1234/v1"), "")
+                with self.assertRaises(ValueError):
+                    providers.credential("http://127.0.0.1:1234/v1", "", credential_id=handle, permanent=True)
+
     def test_models_route_uses_worker_and_returns_errors_without_tracebacks(self):
         with patch.object(providers, "request_json", return_value={"data": [{"id": "loaded"}]}):
             response = self.call({"action": "models", "backend": providers.MODES[1], "local_provider": "LM Studio"})
@@ -258,6 +278,82 @@ class ConfigurationRoutesTests(unittest.TestCase):
             response = self.call({"action": "models", "backend": providers.MODES[1], "local_provider": "LM Studio"})
             self.assertEqual(response.status, 400)
             self.assertEqual(response.payload, {"error": "Cannot reach server"})
+
+
+class PermanentKeyTests(unittest.TestCase):
+    """The optional on-disk store behind "Keep API key after restart"."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.store = Path(self.directory.name) / "minimax_music_toolkit" / "llm_api_keys.json"
+        patcher = patch.object(providers, "_saved_store_path", return_value=self.store)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        providers._KEYS.clear()
+        providers._SAVED.clear()
+
+    def restart(self):
+        """What a ComfyUI restart leaves: no session keys, the file still on disk."""
+        providers._KEYS.clear()
+
+    def test_a_stored_key_survives_a_restart_and_is_used_again(self):
+        handle = providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        self.assertNotIn("test-secret", handle)
+        self.restart()
+        self.assertEqual(
+            providers.credential("https://api.example.test/v1", "", credential_id=handle, permanent=True),
+            "test-secret")
+
+    def test_a_stored_key_never_reaches_another_address(self):
+        handle = providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        self.restart()
+        with self.assertRaises(ValueError):
+            providers.credential("https://other.example.test/v1", "", credential_id=handle, permanent=True)
+        self.assertEqual(providers.saved_key("https://other.example.test/v1"), "")
+
+    def test_the_switch_decides_whether_a_stored_key_is_used(self):
+        handle = providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        self.restart()
+        self.assertEqual(providers.credential("https://api.example.test/v1", "", permanent=False), "")
+        with self.assertRaises(ValueError):
+            providers.credential("https://api.example.test/v1", "", credential_id=handle)
+
+    def test_a_session_key_is_never_written_to_the_store(self):
+        providers.remember_key("https://api.example.test/v1", "test-secret")
+        self.assertFalse(self.store.exists())
+        self.assertEqual(providers.saved_key("https://api.example.test/v1"), "")
+
+    def test_clearing_removes_the_stored_key_from_the_file(self):
+        providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        self.assertEqual(providers.saved_key("https://api.example.test/v1"), "test-secret")
+        self.assertTrue(providers.forget_saved_key("https://api.example.test/v1"))
+        self.assertEqual(providers.saved_key("https://api.example.test/v1"), "")
+        self.assertNotIn("test-secret", self.store.read_text(encoding="utf-8"))
+        self.assertFalse(providers.forget_saved_key("https://api.example.test/v1"))
+
+    def test_the_store_holds_only_entered_keys_and_no_handles(self):
+        providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        data = json.loads(self.store.read_text(encoding="utf-8"))
+        self.assertEqual(data["version"], providers._SAVED_KEYS_VERSION)
+        self.assertEqual(data["keys"], {"https://api.example.test/v1": "test-secret"})
+
+    def test_an_unreadable_store_is_ignored_and_never_fatal(self):
+        self.store.parent.mkdir(parents=True, exist_ok=True)
+        self.store.write_text("{not json", encoding="utf-8")
+        providers._SAVED.clear()
+        self.assertEqual(providers.saved_keys(), {})
+        self.assertEqual(providers.credential("https://api.example.test/v1", "", permanent=True), "")
+
+    def test_a_store_that_cannot_be_written_says_so_without_the_key(self):
+        blocker = Path(self.directory.name) / "blocked"
+        blocker.write_text("not a directory", encoding="utf-8")
+        with patch.object(providers, "_saved_store_path", return_value=blocker / "llm_api_keys.json"):
+            with self.assertRaises(ValueError) as error:
+                providers.remember_key("https://api.example.test/v1", "test-secret", permanent=True)
+        message = str(error.exception)
+        self.assertIn("Keep API key after restart", message)
+        self.assertNotIn("test-secret", message)
 
 
 class CoverTests(unittest.TestCase):

@@ -32,6 +32,17 @@ COMFY_PROVIDED = {
     "torch", "torchaudio", "torchvision", "folder_paths", "nodes", "comfy", "comfy_execution",
     "comfy_aimdo", "server", "aiohttp", "safetensors", "transformers", "yaml", "cv2", "PIL",
     "einops",
+    # PyAV is what ComfyUI's own audio nodes decode with (ComfyUI's requirements.txt
+    # pins `av>=17.0.0`). The cover path asks it whether a source file is readable at
+    # all, so the answer is the one the run itself would get; without it the check
+    # falls back to the toolkit's reader and claims nothing.
+    "av",
+    # tqdm is line 19 of ComfyUI's own requirements.txt, and its nodes draw their
+    # progress bars with it (nodes_frame_interpolation: `tqdm(total=..., desc=...)`;
+    # YuE2 via `comfy.utils.model_trange(..., unit="token")`). The toolkit's LLM and
+    # FlashSR stages use the same bar, so the display matches what the user already
+    # sees from ComfyUI - and progress_utils falls back to a no-op if it is missing.
+    "tqdm",
 }
 
 # Imported inside a function, with a documented fallback, and either tiny or

@@ -39,6 +39,8 @@ NODE_MODULE = {
     "MiniMaxInstrumentalVocalCheck": "instrumental_check",
     "MiniMaxInstrumentalPick": "instrumental_check",
     "MiniMaxStyleHint": "style_hint",
+    "MiniMaxLLMSettings": "llm_config",
+    "MiniMaxModelAdvisor": "model_advisor",
     "MiniMaxAudioTagReader": "audio_tag_copy",
     "MiniMaxOutputPaths": "minimax_batch",
     "MiniMaxMusic3GenerationSettings": "minimax_settings",
@@ -129,6 +131,9 @@ MODULE_NAMES = (
     "audio_tag_copy",
     # 3.1.0: the one style source the studio can read without a dependency cycle.
     "style_hint",
+    # 3.1.2: the central LLM settings node every chat node can read from.
+    "llm_config",
+    "model_advisor",
 )
 
 

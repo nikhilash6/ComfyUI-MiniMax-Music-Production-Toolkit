@@ -8,8 +8,8 @@ post-resample) is kept identical so existing chains sound the same.
 The FlashSR *inference code* is bundled with this package in
 :file:`flashsr_inference/` (vendored from the upstream FlashSR_Inference and
 TorchJaekwon repositories; see ``flashsr_inference/NOTICE.md``).  Only the
-model *weights* are fetched on first use from the ``jakeoneijk/FlashSR_weights``
-Hugging Face dataset into ``models/audio/flashsr`` (per :file:`models_config.json`,
+model *weights* are fetched on first use from the authors' Hugging Face repository
+(``laion/FlashSR_One-step_Versatile_Audio_Super-resolution``, per :file:`models_config.json`,
 with progress logging, then the run continues).  Auto-download can be disabled
 per node.
 
@@ -24,6 +24,7 @@ import math
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -35,7 +36,7 @@ from .model_downloader import (
     normalize_model_entries,
     resolve_target,
 )
-from .progress_utils import format_progress_bar, make_progress_bar
+from .progress_utils import format_duration, format_rate, make_progress_bar, track
 from .toolkit_logging import get_logger
 
 LOGGER = get_logger("flashsr")
@@ -327,35 +328,72 @@ def _resolve_execution_device(torch_module: Any) -> str:
 
 
 def _ensure_flashsr_weights(auto_download: bool) -> Path:
-    """Check/download the FlashSR weights; return the weights directory.
+    """Check/download the FlashSR weights; return the weights directory, or raise.
 
     The inference code is bundled in ``flashsr_inference/`` and needs no
     download.  Only the three weight files (student_ldm.pth, sr_vocoder.pth,
-    vae.pth) are fetched from the configured Hugging Face dataset on first use.
+    vae.pth) are fetched from the configured Hugging Face repository on first use.
 
-    Missing weights fail here, with or without auto-download: this function
-    exists to prepare inference, so deferring the failure to runner construction
-    only moved the same error later with a less useful message.
+    This variant is for a caller that has *already* decided to run FlashSR and only
+    needs the directory; the node uses :func:`flashsr_weights_status` first, which
+    reports the same facts without raising, so an unavailable refinement stage is
+    skipped instead of ending the run.
     """
-    config = load_models_config().get("flashsr", {})
-    weights_entries = normalize_model_entries({"flashsr": config}, minimax=False, flux2=False, llm=False)
-    weights_section = config.get("weights", {})
-    weights_target = weights_section.get("target", "models/audio/flashsr")
+    status = flashsr_weights_status(auto_download)
+    if status["ready"]:
+        return Path(status["directory"])
+    raise RuntimeError(f"FlashSR weights could not be prepared: {status['reason']}")
 
-    report = check_file_entries(weights_entries, base_path=None, auto_download=auto_download)
-    failed = [item for item in report if item["status"] == "failed"]
-    if failed:
-        raise RuntimeError("FlashSR weights could not be prepared: " + "; ".join(f"{i['name']} ({i['message']})" for i in failed))
-    for item in report:
-        if item["status"] in {"downloaded", "missing"}:
-            LOGGER.info("FlashSR model file: %s -> %s", item["status"], item["target"])
-    missing = [item for item in report if item["status"] == "missing"]
-    if missing:
-        raise RuntimeError(
-            "FlashSR weights are missing (auto-download %s). Required: %s"
-            % ("enabled" if auto_download else "disabled", ", ".join(i["name"] for i in missing))
+
+def flashsr_weights_status(auto_download: bool = False) -> Dict[str, Any]:
+    """Whether FlashSR can run - installed, fetched, or unavailable. Never raises.
+
+    Returns ``{"ready", "reason", "directory", "missing", "failed"}``.  The
+    refinement stage is a quality step with a pass-through fallback, so its models
+    being absent (no network, a source that stopped answering, disk full, download
+    switched off) must be *reportable* rather than fatal: the caller skips the stage,
+    logs the reason and keeps the song.  A file counts as ready only when the size
+    check in :func:`~.model_downloader.check_file_entries` passes.
+    """
+    weights_section = (load_models_config().get("flashsr", {}) or {}).get("weights", {}) or {}
+    weights_target = str(weights_section.get("target") or "models/audio/flashsr")
+    try:
+        directory = resolve_target(weights_target)
+    except Exception as exc:  # pragma: no cover - a broken models directory is reported
+        return {"ready": False, "reason": f"the model directory could not be resolved ({type(exc).__name__}: {exc})",
+                "directory": weights_target, "missing": [], "failed": []}
+    try:
+        entries = normalize_model_entries(
+            {"flashsr": load_models_config().get("flashsr", {}) or {}},
+            minimax=False, flux2=False, llm=False,
         )
-    return resolve_target(weights_target)
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"ready": False, "reason": f"the model catalog could not be read ({type(exc).__name__}: {exc})",
+                "directory": directory, "missing": [], "failed": []}
+    if not entries:
+        return {"ready": False, "reason": "the model catalog lists no FlashSR weights",
+                "directory": directory, "missing": [], "failed": []}
+    try:
+        report = check_file_entries(entries, base_path=None, auto_download=bool(auto_download))
+    except Exception as exc:  # pragma: no cover - the check itself reports failures
+        return {"ready": False, "reason": f"the FlashSR weight check failed ({type(exc).__name__}: {exc})",
+                "directory": directory, "missing": [], "failed": []}
+    for item in report:
+        if item["status"] == "downloaded":
+            LOGGER.info("FlashSR model file downloaded: %s", item["target"])
+    missing = [item["name"] for item in report if item["status"] == "missing"]
+    failed = [item["name"] for item in report if item["status"] == "failed"]
+    if failed:
+        details = next((item["message"] for item in report if item["status"] == "failed" and item["message"]), "")
+        return {"ready": False, "directory": directory, "missing": missing, "failed": failed,
+                "reason": f"{', '.join(failed)} could not be downloaded ({details})"}
+    if missing:
+        return {"ready": False, "directory": directory, "missing": missing, "failed": [],
+                "reason": (f"{', '.join(missing)} not installed and "
+                           + ("the download did not deliver them" if auto_download else "auto-download disabled"))}
+    return {"ready": True, "directory": directory, "missing": [], "failed": [],
+            "reason": "weights are installed", "files": [item["name"] for item in report]}
+
 
 
 _runner_cache: Dict[str, Any] = {}
@@ -489,6 +527,7 @@ def _upscale_item(
     total_progress: int,
     label: str,
     seed: Optional[int] = None,
+    bar: Any = None,
 ) -> np.ndarray:
     """Upscale one batch item (``[C, S]``) with streaming overlap-add.
 
@@ -508,7 +547,6 @@ def _upscale_item(
     total = int(item_cs.shape[1])
     spans = _iter_chunks(total, window, hop)
     total_chunks = len(spans)
-    log_every = max(1, total_chunks // 10)
     window_full = np.hanning(window).astype(np.float32)
     acc: Optional[np.ndarray] = None
     weight_sum = np.zeros(total, np.float32)
@@ -549,9 +587,11 @@ def _upscale_item(
         _ola_accumulate(acc, weight_sum, pred, start, length, window, window_full)
         del pred, y, x  # release the per-chunk tensors immediately
         pbar.update_absolute(min(total_progress, progress_offset + chunk_index + 1))
-        done = chunk_index + 1
-        if done % log_every == 0 or done == total_chunks:
-            LOGGER.info("FlashSR progress for %s %s", label, format_progress_bar(done, total_chunks))
+        # One bar that updates in place (the same tqdm bar ComfyUI's own nodes draw), not
+        # one log line per chunk.  It spans all batch items, so it shows how much of the
+        # whole request is done - with the elapsed time, the remaining time and the rate.
+        if bar is not None:
+            bar.update(1)
 
     if acc is None:
         return np.zeros((max(1, int(item_cs.shape[0])), max(1, total)), np.float32)
@@ -586,7 +626,25 @@ class MiniMaxFlashSRAudio:
         actually tested - see the module tests).
         """
         batch, in_sr = _to_batch_channel_samples(audio)
-        weights_dir = _ensure_flashsr_weights(bool(auto_download))
+        status = flashsr_weights_status(bool(auto_download))
+        if not status["ready"]:
+            # A refinement stage that cannot run is skipped - loudly, with the reason -
+            # instead of ending a run that produces the song without it.
+            LOGGER.warning(
+                "FlashSR refinement skipped: %s. The audio passes through unchanged; turn 'Refinement' off "
+                "in the workflow to silence this line, or place the three weights in %s.",
+                status["reason"], status["directory"],
+            )
+            return (audio, json.dumps({
+                "schema": "flashsr_settings_v1",
+                "status": "skipped",
+                "reason": status["reason"],
+                "missing": status["missing"],
+                "failed": status["failed"],
+                "weights_dir": str(status["directory"]),
+                "note": "the input audio is returned unchanged; the refinement stage is optional",
+            }, ensure_ascii=False, indent=2))
+        weights_dir = Path(status["directory"])
         runner = _get_runner(weights_dir)
         model = runner["model"]
         device = runner["device"]
@@ -598,7 +656,12 @@ class MiniMaxFlashSRAudio:
 
         total_items = len(batch)
         per_item_chunks = [len(_iter_chunks(int(item.shape[1]), CHUNK_SAMPLES, max(1, int((CHUNK_S - OVERLAP_S) * REQ_SR)))) for item in batch]
-        pbar = make_progress_bar(max(1, sum(per_item_chunks)))
+        total_chunks = max(1, sum(per_item_chunks))
+        pbar = make_progress_bar(total_chunks)
+        # The console gets one bar for the whole request, drawn the way ComfyUI's own nodes
+        # draw theirs: percentage, count, elapsed time, remaining time and chunk rate.
+        started = time.monotonic()
+        bar = track(total_chunks, desc="FlashSR upscaling", unit="chunk")
         LOGGER.info(
             "FlashSR upscaling: %d batch item(s), %d samples @ %d Hz on %s",
             total_items,
@@ -612,7 +675,7 @@ class MiniMaxFlashSRAudio:
             label = f"item {index + 1}/{total_items}" if total_items > 1 else "audio"
             out_item = _upscale_item(
                 model, device, item, bool(lowpass_input), pbar, offset,
-                max(1, sum(per_item_chunks)), label, seed,
+                total_chunks, label, seed, bar,
             )
             offset += per_item_chunks[index]
             if target_sr != REQ_SR:
@@ -620,13 +683,21 @@ class MiniMaxFlashSRAudio:
             outputs.append(out_item)
 
         out_batch, padded = _make_audio_batch(target_sr, outputs)
+        bar.close()
+        elapsed = max(0.0, time.monotonic() - started)
+        rate = format_rate(total_chunks, elapsed, "chunk")
         LOGGER.info(
-            "FlashSR upscale finished: %d item(s), %d Hz -> %d Hz, %d samples on %s",
+            "FlashSR upscale finished: %d item(s), %d Hz -> %d Hz, %d samples on %s - "
+            "%d/%d chunks in %s%s",
             total_items,
             in_sr,
             target_sr,
             int(out_batch["waveform"].shape[-1]),
             device,
+            total_chunks,
+            total_chunks,
+            format_duration(elapsed),
+            f" ({rate})" if rate else "",
         )
         settings_json = json.dumps({
             "schema": "flashsr_settings_v1",

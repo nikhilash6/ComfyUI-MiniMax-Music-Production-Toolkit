@@ -47,6 +47,12 @@ flashsr = load_flashsr()
 PROGRESS = sys.modules["_toolkit_flashsr_batch_test.progress_utils"]
 
 
+def ready_weights(directory):
+    """The availability probe the node uses: installed, no download needed."""
+    return {"ready": True, "directory": str(directory), "missing": [], "failed": [],
+            "reason": "weights are installed (test)"}
+
+
 class FakeBar:
     def update_absolute(self, value):
         pass
@@ -84,7 +90,10 @@ class FlashSRBatchTestCase(unittest.TestCase):
         self.model = FakeModel()
         self.runner = {"model": self.model, "device": "cpu", "requested_device": "cpu", "fallback": False}
         self.original_get_runner = flashsr._get_runner
-        self.patch(flashsr, "_ensure_flashsr_weights", lambda auto_download: self.weights)
+        # The node asks the non-raising probe (an unavailable stage has to be skipped,
+        # not raised), so the seam under test is that probe.
+        self.patch(flashsr, "flashsr_weights_status",
+                   lambda auto_download=False: ready_weights(self.weights))
         self.patch(flashsr, "_get_runner", lambda weights_dir: self.runner)
         self.patch(PROGRESS, "make_progress_bar", lambda total: FakeBar())
         flashsr._runner_cache.clear()

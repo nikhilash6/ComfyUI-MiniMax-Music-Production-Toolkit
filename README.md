@@ -1,4 +1,4 @@
-# Music Production Toolkit 3.1.1 for ComfyUI
+# Music Production Toolkit 3.1.2 for ComfyUI
 
 <p align="center">
   <img src="assets/branding/banner.png" alt="Music Production Toolkit for ComfyUI — YuE2, YuE2 Cover and MiniMax Music 3" width="100%" />
@@ -85,7 +85,7 @@ the main workflow handles YuE2, YuE2 Cover and MiniMax Music 3, and the
 audio-enhancement workflow carries every restoration and mastering stage of the
 main one plus your original file's own tags and cover art.
 
-[What's new in 3.1.1](RELEASE_NOTES_v3.1.1.md) · [Complete workflow guide](docs/WORKFLOW.md) ·
+[What's new in 3.1.2](RELEASE_NOTES_v3.1.2.md) · [Complete workflow guide](docs/WORKFLOW.md) ·
 [Installation](INSTALLATION.md)
 
 ## What the toolkit does
@@ -129,27 +129,27 @@ to enhance and master the recording you already have.
 
 Created by [Johannes Plenio](https://github.com/jplenio).
 
-## What's new in 3.1.1
+## What's new in 3.1.2
 
-A patch that makes long runs easier to follow, fixes one cover stopper and refreshes
-the look:
+Better help at setup time, fewer things to configure, and a run you can watch:
 
-- **Every log line now carries the date and time** (`2026-09-18 14:22:31 Saved
-  artwork: …`), so a ComfyUI log reads as a timeline: when a run started, how long a
-  stage took, which result belongs to which attempt.
-- **A cover run names the audio file it was made from** — the file, its full path,
-  its size and the three cover choices, once when the file is selected and again for
-  every generated song.
-- **Fixed: `original lyrics` covers stopped before the first note.** The bundled
-  workflow carried the toolkit's "field not set" placeholder in the Whisper node's
-  language field. It now stores `auto`, and a workflow test refuses any stored value
-  the node does not offer.
-- **New banner, icon and workflow screenshots.** The toolkit is no longer MiniMax
-  only — YuE2, YuE2 Cover and MiniMax Music 3 live side by side, and the branding now
-  says so. Both workflows are pictured above.
-- **Documented:** the `_ProactorBasePipeTransport` message a long Windows run can
-  print is a dropped client connection, not a toolkit failure — see
-  [troubleshooting](TROUBLESHOOTING.md#exception-in-callback-_proactorbasepipetransport_call_connection_lost-during-a-run).
+- **The toolkit now assesses your PC and says which models suit it.** It reads CPU,
+  RAM and the class of your graphics card, and reports per task which file fits — with
+  a 1–5 star rating for the job it does and, when your first choice is too large, the
+  smaller alternative that fits. The same list is in the
+  [README table below](#what-to-expect-from-your-pc) and in
+  [installation](INSTALLATION.md). **Selected models download themselves** — Whisper
+  and the language model fetch exactly what you picked, and nothing arrives unasked.
+- **The language-model settings are entered once.** Set provider, model, context and
+  sampler values in the new `LLM settings · central` node and connect it to every LLM
+  call; each call keeps only what is specific to it.
+- **Better logging.** Long stages draw the same progress bar ComfyUI's own nodes draw —
+  one line that updates in place with the count, the elapsed time, the remaining time
+  and the rate (`LLM streaming: 8%|# | 1958/24576 [01:15<14:24, 26.1token/s]`) — and a
+  refinement stage whose model is missing switches itself off with a log line instead
+  of ending the run.
+
+Details: [release notes 3.1.2](RELEASE_NOTES_v3.1.2.md).
 
 **The cover feature in detail.** *Cover song · source audio* has a
 **Cover lyrics** setting with three modes, and the choice reaches the score node,
@@ -289,7 +289,17 @@ Groq in the cloud. Other OpenAI-compatible endpoints can be entered manually.
 Only the relevant settings are shown. **Set API key** keeps the secret out of
 your workflow; **Find models** helps select a model from your server.
 The LLM generates fresh text on each queued execution, without a separate
-session-ID node. In cloud mode, each new request may incur API charges.
+session-ID node. In cloud mode, each new request may incur API charges. The main
+workflow's three LLM calls share one configuration: set the provider, the model
+and the sampler values in **LLM settings · central** and connect it to every LLM
+chat node. Integrated GGUFs listed in the model dropdown download on first use,
+so a model does not have to be fetched by hand before it can be selected.
+
+Not sure which model your PC should use? Add the **Model advisor** node: it reads
+the detected hardware, reports per task which file fits (with the free memory and
+the margin it assumed) and rates every candidate from 1 to 5 stars for the job it
+does — including the smaller alternatives for 4–12 GiB cards, which are in the
+download catalog but never fetched automatically.
 
 In the main workflow, **Cover** in **CHOOSE** controls artwork and defaults to
 **ON**. It is independent of the **YuE2 Cover** song mode. Turn it off to skip
@@ -378,6 +388,47 @@ settings that fit your available RAM and VRAM.
 - **CPU mastering:** EQ, analysis, compression and limiting do not require GPU
   memory. Full audio buffers and generation models still need system memory.
 
+### What to expect from your PC
+
+A starting point, **not a measurement**. The sizes are the real file sizes from the model
+repositories, the stars judge suitability for this toolkit's tasks (5 ★ = the best choice
+in its class, 3 ★ = usable with supervision, 1–2 ★ = a fallback for machines with very
+little memory), and the speed column is an estimate from the model class, the step counts
+and the context this toolkit uses. This project has not benchmarked those on real
+hardware yet — the measurement matrix in `tests/fixtures/benchmark_matrix.json` still says
+*untested*. For what is possible on *your* machine, add the **Model advisor** node: it
+reports the memory it detected and which file fits it.
+
+| Your PC | Music generation | Language model | Lyrics (Whisper) | Cover artwork | Speed to expect |
+|---|---|---|---|---|---|
+| **CPU only** | not practical | `Qwen3.5-2B` 1.2 GiB ★★ / `Qwen3.5-4B` 2.6 GiB ★★★ | `whisper-large-v3-turbo-int8` 0.8 GiB ★★★ | switch **Cover** off | Caption/lyrics: minutes per answer. Whisper: minutes to tens of minutes per song. Generation and artwork: not in interactive time. |
+| **6–8 GiB VRAM** | `yue2_3b_int8` 3.7 GiB ★★★★ (MiniMax needs its 8.6 GiB encoder offloaded) | `Qwen3.5-9B-Q4_K_M` 6.2 GiB ★★★★ / `Qwen3.5-4B` 2.6 GiB ★★★ | `whisper-large-v3-turbo` 1.5 GiB ★★★★ | `fp8` diffusion + `fp4` encoder (7.4 GiB together) ★★★★ — tight | Song: minutes. Text: ~10–60 s per answer. Artwork: seconds to a minute. |
+| **10–12 GiB VRAM** | `minimax_music3_dit_int8` ★★★★ + int8 encoder (offload) / `yue2_3b_int8` | `gemma-4-12b-it-qat` 7.0 GiB ★★★★★ or `Qwen3.8-9B` ★★★★ | `whisper-large-v3` 2.9 GiB ★★★★★ | `fp8` + `fp4` comfortable; bf16 pair too large together | As above, with more headroom for context. |
+| **16 GiB VRAM** | `minimax_music3_dit_fp16` + int8 encoder (13.3 GiB together) / YuE2 bf16 7.3 GiB ★★★★★ | `gemma-4-12b-it-qat` ★★★★★ or `Qwen3.8-27B-UD-IQ3_XXS` 10.9 GiB ★★★★ | `whisper-large-v3` ★★★★★ | bf16 pair (15.0 GiB) with offload, or `fp8`+`fp4` relaxed | Song: minutes. Text: up to ~1 min per answer with a 27B model. |
+| **24 GiB VRAM** | MiniMax fp16 DiT + int8 encoder comfortable; YuE2 bf16 + SheetSage2 | `Qwen3.8-27B-UD-IQ4_XS` 14.3 GiB ★★★★★ | `whisper-large-v3` with batching ★★★★★ | bf16 pair ★★★★★ | Everything at full speed; the LLM is the slowest stage. |
+| **32 GiB+ VRAM** | any catalog variant, fp32 DiT optional ★★ | `Qwen3.8-27B-UD-Q4_K_M` 16.5 GiB ★★★★ | `whisper-large-v3` ★★★★★ | bf16 ★★★★★ | As above; split across GPUs only helps when measured. |
+
+The same information per stage, with the reasoning:
+
+- **Music generation (MiniMax Music 3 / YuE2)** — 40 (MiniMax) resp. 32 (YuE2) sampling steps
+  over the whole song plus a text encoder that is the largest single file in the toolkit
+  (8.6 GiB in the pruned int8 version; there is no smaller one). On a card the run is
+  minutes, not seconds; the audio chain after it (declip, low-pass, FlashSR, mastering)
+  is far cheaper than the generation itself.
+- **Language model** — the prompt is up to ~11.6k tokens and the answer up to ~2k, so the
+  prefilling dominates. A cloud provider is the fastest option and needs no local memory;
+  among local models the class 9–12B is the usual sweet spot, and the 27B entries are for
+  quality comparisons, not for speed.
+- **Whisper** — only cover runs with lyrics need it, and only once per run. large-v3 is the
+  most accurate for sung, mixed and multilingual material; the turbo variants are roughly
+  half the size and faster with a small quality cost on dense mixes. Its int8 quantization
+  cost is not measured.
+- **Artwork (FLUX.2 klein)** — the second-largest memory consumer, and the one stage you can
+  simply switch off (**Cover → OFF**): a song without generated art loses nothing else.
+- **FlashSR (refinement)** — optional and pass-through: if its weights are neither installed
+  nor downloadable, the stage switches itself off with a log line and the audio continues
+  unchanged, so a missing refinement never ends a run.
+
 **A smaller local model is a memory saving, not a free one — the text side is the hard
 part.** The toolkit's prompts are long and tightly structured: the cover path hands the
 model the source score, the arrangement plan and the style template together and asks
@@ -449,6 +500,7 @@ See [installation](INSTALLATION.md) and [troubleshooting](TROUBLESHOOTING.md).
 
 ## Documentation
 
+- [Release 3.1.2 notes](RELEASE_NOTES_v3.1.2.md)
 - [Release 3.1.1 notes](RELEASE_NOTES_v3.1.1.md)
 - [Release 3.1.0 notes](RELEASE_NOTES_v3.1.0.md)
 - [Release 3.0.1 notes](RELEASE_NOTES_v3.0.1.md)

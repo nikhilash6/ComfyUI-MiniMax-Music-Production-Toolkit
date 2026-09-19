@@ -143,11 +143,59 @@ Node-Typ: `MiniMaxLLMChat`. Betriebsart bestimmt wirksame Parameter; providerabh
 | `N81.credential_id` – credential id | Sitzungs-/Verbindungskonfiguration; keine Geheimnisse im Layout | Sitzungs-/Verbindungsadapter; nicht als veröffentlichbaren Parameter behandeln | K | — |
 | `N81.remote_max_tokens` – remote max tokens | 65536 | 1 … 131072; Standardfeld; native App-Bindung prüfen | E | — |
 | `N81.request_timeout` – request timeout | 240 | 5 … 600; Standardfeld; native App-Bindung prüfen | E | — |
+| `N81.permanent_key` – permanent key | False | Sitzungs-/Verbindungskonfiguration; keine Geheimnisse im Layout | Sitzungs-/Verbindungsadapter; nicht als veröffentlichbaren Parameter behandeln | K | — |
 | `N81.llm_ui_advanced` – llm ui advanced | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | E | — |
 | `N81.llm_ui_key` – llm ui key | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
 | `N81.llm_ui_clear` – llm ui clear | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
 | `N81.llm_ui_models` – llm ui models | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
 | `N81.llm_ui_help` – llm ui help | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | E | — |
+
+### N134 – LLM-Einstellungen · zentral (ein Ort für alle Aufrufe)
+
+Node-Typ: `MiniMaxLLMSettings`. Fasst Provider, Modell und Sampler-Werte aller LLM-Aufrufe an einer
+Stelle zusammen und gibt sie als `llm_config_json` an N81, N128 und N130 weiter. Nur ein Feld, das hier
+einen Wert trägt, überschreibt den aufrufenden Node; fehlende Felder behalten dort ihren Wert. Aufrufspezifisches
+(`enabled`, `user_text`, `system_prompt`, `reset_session`) bleibt am Chat-Node. Die Feldliste wird aus
+`MiniMaxLLMChat` abgeleitet, die beiden Nodes können daher nicht auseinanderlaufen. Die Verbindung ist überall
+optional; ein leerer oder unlesbarer Wert wird protokolliert und ignoriert.
+
+| ID / Einstellung | Aktueller Wert | Möglichkeiten / Bindung | Vorschlag | Deine Wahl |
+| --- | --- | --- | --- | --- |
+| `N134.model` – Modell | Qwen3.8-27B-UD-IQ3_XXS.gguf | Dynamische Modell-/Dateiliste; Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.max_tokens` – max tokens | 24576 | 1 … 131072; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.temperature` – temperature | 1 | 0.0 … 2.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.top_p` – top p | 0.95 | 0.0 … 1.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.n_gpu_layers` – n gpu layers | -1 | -1 … 512; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.n_ctx` – n ctx | 37376 | 512 … 262144; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.auto_download` – auto download | True | Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.chat_format` – chat format | auto | auto / chatml / qwen / gemma / llama-3 / none; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.thinking` – thinking | on | auto / on / off; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.top_k` – top k | 20 | 1 … 1000; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.min_p` – min p | 0 | 0.0 … 1.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.repeat_penalty` – repeat penalty | 1 | 0.0 … 3.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.presence_penalty` – presence penalty | 0 | -2.0 … 2.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.frequency_penalty` – frequency penalty | 0 | -2.0 … 2.0; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.seed` – seed | -1 | -1 … 2147483647; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.control_after_generate` – control after generate | none | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | E | — |
+| `N134.split_mode` – split mode | none | none / layer / row; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.tensor_split` – tensor split | leer | Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.main_gpu` – main gpu | 0 | 0 … 16; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.tensor_parallel` – tensor parallel | False | Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.backend` – LLM-Betriebsart | In ComfyUI (GGUF) | In ComfyUI (GGUF) / Local app / server / Cloud service; Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.local_provider` – local provider | LM Studio | LM Studio / Ollama / llama.cpp / Unsloth Studio / vLLM / Other OpenAI-compatible server; Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.cloud_provider` – cloud provider | OpenAI | OpenAI / Claude (Anthropic) / Gemini (Google) / DeepSeek / Qwen (Alibaba Cloud) / MiniMax / OpenRouter / Groq / Other OpenAI-compatible cloud; Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.server_url` – server url | leer | Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.remote_model` – remote model | leer | Standardfeld; native App-Bindung prüfen | K | — |
+| `N134.api_key_env` – api key env | Sitzungs-/Verbindungskonfiguration; keine Geheimnisse im Layout | Sitzungs-/Verbindungsadapter; nicht als veröffentlichbaren Parameter behandeln | K | — |
+| `N134.credential_id` – credential id | Sitzungs-/Verbindungskonfiguration; keine Geheimnisse im Layout | Sitzungs-/Verbindungsadapter; nicht als veröffentlichbaren Parameter behandeln | K | — |
+| `N134.remote_max_tokens` – remote max tokens | 65536 | 1 … 131072; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.request_timeout` – request timeout | 240 | 5 … 600; Standardfeld; native App-Bindung prüfen | E | — |
+| `N134.permanent_key` – permanent key | False | Sitzungs-/Verbindungskonfiguration; keine Geheimnisse im Layout | Sitzungs-/Verbindungsadapter; nicht als veröffentlichbaren Parameter behandeln | K | — |
+| `N134.llm_ui_advanced` – llm ui advanced | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | E | — |
+| `N134.llm_ui_key` – llm ui key | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
+| `N134.llm_ui_clear` – llm ui clear | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
+| `N134.llm_ui_models` – llm ui models | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | K | — |
+| `N134.llm_ui_help` – llm ui help | nicht gespeichert / aus Definition | Frontend-Aktion/Zustand: App-Adapter prüfen; kein eigenständiger DSP-Parameter | E | — |
 
 ### N85 – Free LLM memory → parser
 

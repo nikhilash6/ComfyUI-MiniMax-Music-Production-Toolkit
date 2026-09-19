@@ -272,7 +272,15 @@ class ListModelsTests(unittest.TestCase):
             os.environ["COMFYUI_MODELS_DIRECTORY"] = self._previous
 
     def test_only_chat_models_are_offered(self):
-        self.assertEqual(llm.list_llm_models(), ["Qwen3.8-27B-UD-IQ3_XXS.gguf", "Split-00001-of-00002.gguf"])
+        listed = llm.list_llm_models()
+        # Installed files first, in scan order; the catalog's candidates follow so a
+        # model that is not on disk yet can still be selected and then downloaded.
+        self.assertEqual(listed[:2], ["Qwen3.8-27B-UD-IQ3_XXS.gguf", "Split-00001-of-00002.gguf"])
+        self.assertEqual(len(listed), len(set(listed)), "no model may be offered twice")
+        catalog = [entry["name"] for entry in llm.load_models_config()["llm"]["files"]]
+        self.assertTrue(catalog, "the LLM catalog must name downloadable models")
+        for name in catalog:
+            self.assertIn(name, listed)
 
     def test_metadata_cache_is_bounded_and_reports_the_size(self):
         path = self.models_dir / "Qwen3.8-27B-UD-IQ3_XXS.gguf"

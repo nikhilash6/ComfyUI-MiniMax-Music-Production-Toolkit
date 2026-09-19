@@ -43,6 +43,11 @@ SUPPORTED_CONFIG_VERSIONS = (1, 2, 3)
 # Documented Hugging Face resolve rule.  The rule is generic; the repository and
 # file names it is applied to must still be verified per artifact (see D02).
 HF_RESOLVE_TEMPLATE = "https://huggingface.co/{prefix}{repo_id}/resolve/{revision}/{filename}"
+
+# Star rows for a catalog entry's 1-5 rating (suitability for this toolkit's task).
+STAR_FULL = "\u2605"
+STAR_EMPTY = "\u2606"
+
 _DOWNLOAD_LOCK = threading.Lock()
 _STAGING_COUNTER = itertools.count()
 
@@ -339,6 +344,31 @@ def config_version_problem(config: Any) -> Optional[str]:
     return None
 
 
+def stars(rating: Optional[int]) -> str:
+    """A rating as a five-character star row (``4`` -> ``★★★★☆``).
+
+    Defined here, in the module that owns the catalog, so the check report and the
+    model advisor render a rating identically; an entry without a rating gets an
+    honest empty row instead of a made-up one.
+    """
+    try:
+        value = int(rating)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return STAR_EMPTY * 5
+    value = max(0, min(5, value))
+    return STAR_FULL * value + STAR_EMPTY * (5 - value)
+
+
+def _HARDWARE_CLASSES() -> List[str]:
+    """Hardware class ids the catalog may reference (from resource_profiles)."""
+    try:
+        from .resource_profiles import hardware_classes
+
+        return list(hardware_classes())
+    except Exception:  # pragma: no cover - standalone use
+        return ["cpu"] + [f"vram_{upper}" for upper in (4, 8, 12, 16, 24, 32)] + ["vram_unknown"]
+
+
 def resolve_entry_url(entry: Dict[str, Any]) -> str:
     """The effective download URL for one entry.
 
@@ -426,6 +456,22 @@ def validate_model_entry(entry: Any) -> Optional[str]:
     size = entry.get("bytes")
     if size is not None and (not isinstance(size, int) or isinstance(size, bool) or size <= 0):
         return "entry 'bytes' must be a positive integer"
+    flag = entry.get("no_auto_download")
+    if flag is not None and not isinstance(flag, bool):
+        return "entry 'no_auto_download' must be a boolean"
+    rating = entry.get("rating")
+    if rating is not None and (not isinstance(rating, int) or isinstance(rating, bool) or not 1 <= rating <= 5):
+        return "entry 'rating' must be an integer from 1 to 5"
+    rating_note = entry.get("rating_note")
+    if rating_note is not None and not isinstance(rating_note, str):
+        return "entry 'rating_note' must be a string"
+    suits = entry.get("suits")
+    if suits is not None:
+        if not isinstance(suits, list) or any(not isinstance(item, str) for item in suits):
+            return "entry 'suits' must be a list of hardware class ids"
+        unknown = sorted({item for item in suits if item not in _HARDWARE_CLASSES()})
+        if unknown:
+            return "entry 'suits' names unknown hardware classes: " + ", ".join(unknown)
     sha256 = entry.get("sha256")
     if isinstance(sha256, str) and sha256 and not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         return "entry 'sha256' must be 64 hex characters"
@@ -456,17 +502,19 @@ def normalize_model_entries(
 
     Entries marked ``"optional": true`` (alternative quantizations of a family)
     are excluded unless ``include_optional`` asks for them, so a download never
-    pulls in a whole family by accident.
+    pulls in a whole family by accident.  The LLM chat models are the exception:
+    they are marked optional because a run needs at most one of them, and they
+    stay in the check (``allow_optional``) so the report can still name them.
     """
     config = config if isinstance(config, dict) else {}
     entries: List[Dict[str, Any]] = []
 
-    def add(entry: Any, *, note: str = "", default_target: str = "") -> None:
+    def add(entry: Any, *, note: str = "", default_target: str = "", allow_optional: bool = False) -> None:
         problem = validate_model_entry(entry)
         if problem:
             LOGGER.warning("Ignoring malformed model config entry: %s", problem)
             return
-        if entry.get("optional") and not include_optional:
+        if entry.get("optional") and not (include_optional or allow_optional):
             LOGGER.debug("Skipping optional model artifact: %s", entry.get("name"))
             return
         expanded = dict(entry)
@@ -521,7 +569,9 @@ def normalize_model_entries(
     if llm:
         group = config.get("llm", {}) or {}
         note = group.get("note", "")
-        directory = group.get("directory", "") or ""
+        # The group names its folder either way; both spellings are used in the wild
+        # (the LLM group historically used `directory`, the other groups use `target`).
+        directory = group.get("directory", "") or group.get("target", "") or ""
         seen = set()
         # Every configured LLM artifact, not only the example: the check node and
         # the loader must resolve the same set of files.
@@ -531,7 +581,11 @@ def normalize_model_entries(
                 if key in seen:
                     continue
                 seen.add(key)
-            add(entry, note=note, default_target=directory)
+            # The chat models are alternatives: a run needs at most one of them, so
+            # they are reported as optional rather than "required and missing". They
+            # are still reported - ``allow_optional`` keeps them in the check so the
+            # panel can name the models the toolkit is able to fetch.
+            add(entry, note=note, default_target=directory, allow_optional=True)
 
     return entries
 
@@ -799,7 +853,7 @@ def check_file_entries(
         try:
             if _file_is_ready(destination, entry.get("sha256"), entry.get("bytes") or 1):
                 status = "present"
-            elif url and auto_download:
+            elif url and auto_download and not entry.get("no_auto_download"):
                 download_file(
                     url,
                     destination,
@@ -809,6 +863,11 @@ def check_file_entries(
                     expected_bytes=int(entry["bytes"]) if entry.get("bytes") else None,
                 )
                 status = "downloaded"
+            elif entry.get("no_auto_download"):
+                # Reported, never fetched here: a candidate that is only downloaded where
+                # it is actually selected. A checkbox must not start a 60 GB download.
+                message = (entry.get("note") or
+                           "not downloaded automatically; select it where it is used").strip()
             elif url:
                 message = "missing and auto_download is disabled"
             else:
@@ -821,6 +880,8 @@ def check_file_entries(
             "target": str(destination),
             "status": status,
             "message": message,
+            "rating": entry.get("rating"),
+            "suits": list(entry.get("suits") or []),
         })
     return report
 
@@ -869,6 +930,8 @@ def preflight_models(
                 "bytes_expected": expected,
                 "bytes_present": present_bytes,
                 "optional": optional_by_name.get(name, False),
+                "rating": item.get("rating"),
+                "rating_stars": stars(item.get("rating")),
             }
         )
 
@@ -941,6 +1004,8 @@ def format_check_report(report: List[Dict[str, Any]]) -> str:
         status = item["status"]
         marker = {"present": "OK ", "downloaded": "DL ", "missing": "-- ", "failed": "ERR"}[status]
         line = f"{marker} {item['name']}: {status}"
+        if item.get("rating"):
+            line += f" [{stars(item['rating'])}]"
         if item["message"]:
             line += f" ({item['message']})"
         lines.append(line)

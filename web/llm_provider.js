@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { widget, settings, signature, refresh, CONNECTION_FIELDS, BUTTONS } from "./llm_provider_ui.js";
+import { widget, settings, signature, refresh, CONNECTION_FIELDS, BUTTONS, PROVIDER_NODES } from "./llm_provider_ui.js";
 import { applyTooltip } from "./prompt_ui_utils.js";
 
 async function action(node, name, extra = {}) {
@@ -39,7 +39,12 @@ const LABELS = {
     backend: "Run language model", local_provider: "Local app", cloud_provider: "Cloud provider",
     server_url: "API address (blank = default)", remote_model: "Model ID", api_key_env: "Key variable (optional)",
     remote_max_tokens: "Output token limit", request_timeout: "Request timeout (seconds)",
+    permanent_key: "Keep API key after restart",
 };
+
+// The switch decides what the key dialog promises and what is sent with it, so both
+// read it from the node rather than from a copy that could go stale.
+const permanent = node => widget(node, "permanent_key")?.value === true;
 let catalogPromise;
 function providerCatalog() {
     if (!catalogPromise) catalogPromise = api.fetchApi("/minimax_music_toolkit/llm/providers")
@@ -48,10 +53,13 @@ function providerCatalog() {
     return catalogPromise;
 }
 
+// Nodes that carry the same provider widgets (the chat node and the central
+// settings node) are listed in llm_provider_ui.js so the frontend test can
+// require them; this extension only wires them to the canvas.
 app.registerExtension({
     name: "minimax_music_production_toolkit.llm_providers",
     nodeCreated(node) {
-        if ((node.comfyClass || node.type) !== "MiniMaxLLMChat") return;
+        if (!PROVIDER_NODES.has(node.comfyClass || node.type)) return;
         for (const [name, label] of Object.entries(LABELS)) {
             const w = widget(node, name); if (w) w.label = label;
         }
@@ -82,12 +90,15 @@ app.registerExtension({
             () => { node._llmAdvanced = !node._llmAdvanced; refresh(node); });
         button("llm_ui_key", BUTTONS.llm_ui_key.label, BUTTONS.llm_ui_key.tooltip, () => {
             const before = signature(node);
+            const keep = permanent(node);
             const input = document.createElement("input"); input.type = "password"; input.autocomplete = "off";
             choose("API key for this connection", input,
-                "Stored only in ComfyUI memory until restart. The provider key is never included in your workflow. Cloud API usage may be billed by the provider.",
+                keep
+                    ? "Kept on this computer and reused after a ComfyUI restart, bound to this exact API address. The provider key is never included in your workflow. Cloud API usage may be billed by the provider."
+                    : "Stored only in ComfyUI memory until restart. Turn on 'Keep API key after restart' to store it on this computer instead. The provider key is never included in your workflow. Cloud API usage may be billed by the provider.",
                 async key => {
                     if (signature(node) !== before) throw new Error("Connection changed. Close this dialog and try again.");
-                    const result = await action(node, "set_key", {key});
+                    const result = await action(node, "set_key", {key, permanent: keep});
                     if (signature(node) !== before) return;
                     widget(node, "credential_id").value = result.credential_id;
                     node.setDirtyCanvas?.(true, true);
@@ -105,7 +116,7 @@ app.registerExtension({
             const previousModel = widget(node, "remote_model")?.value;
             find.label = "Connecting…"; node.setDirtyCanvas?.(true, true);
             try {
-                const result = await action(node, "models");
+                const result = await action(node, "models", {permanent: permanent(node)});
                 if (signature(node) !== before) return;
                 const select = document.createElement("select");
                 for (const id of result.models) {
@@ -131,13 +142,13 @@ app.registerExtension({
                 const profile = (local ? catalog.local : catalog.cloud)[name];
                 const base = config.server_url || profile?.[0] || "Enter the API base from your provider's console (including /v1).";
                 const field = document.createElement("textarea"); field.readOnly = true; field.rows = 9;
-                field.value = `Provider: ${name}\nAPI address: ${base}\nKey: ${config.credential_id ? "Session key selected (valid until ComfyUI restart)." : "No session key; environment variable if configured."}\nKey variable: ${config.api_key_env || (!config.server_url ? profile?.[2] : "") || "none"}\n\n${local ? "1. Start the app's API server and load a text/instruct model.\n2. Check the port above; it may differ in your installation." : "1. Get an API key from the provider's developer console.\n2. Cloud prompts are sent to the provider; API usage may be billed."}\n3. Set API key if needed, then Find models.\n4. Select a text model, or enter its model ID manually.`;
+                field.value = `Provider: ${name}\nAPI address: ${base}\nKey: ${config.credential_id ? "A key reference is set for this connection." : "No key reference; environment variable if configured."}\nKeep after restart: ${permanent(node) ? "on – a stored key is used again after a ComfyUI restart." : "off – the key lives in ComfyUI's memory until it restarts."}\nKey variable: ${config.api_key_env || (!config.server_url ? profile?.[2] : "") || "none"}\n\n${local ? "1. Start the app's API server and load a text/instruct model.\n2. Check the port above; it may differ in your installation." : "1. Get an API key from the provider's developer console.\n2. Cloud prompts are sent to the provider; API usage may be billed."}\n3. Set API key if needed, then Find models.\n4. Select a text model, or enter its model ID manually.`;
                 choose("Connection setup", field, "The address is reached from the computer running ComfyUI. In Docker or on a remote host, localhost refers to that environment.", async () => {});
             } catch (error) { alert(error.message); }
         });
         queueMicrotask(() => refresh(node));
     },
     loadedGraphNode(node) {
-        if ((node.comfyClass || node.type) === "MiniMaxLLMChat") queueMicrotask(() => refresh(node));
+        if (PROVIDER_NODES.has(node.comfyClass || node.type)) queueMicrotask(() => refresh(node));
     },
 });

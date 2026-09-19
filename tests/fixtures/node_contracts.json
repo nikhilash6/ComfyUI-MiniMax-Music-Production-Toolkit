@@ -1346,7 +1346,19 @@
       ],
       "model": [
         [
-          "Qwen3.8-27B-UD-IQ3_XXS.gguf"
+          "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "Qwen_Qwen3.5-9B-Q5_K_M.gguf",
+          "Qwen_Qwen3.5-9B-Q6_K.gguf",
+          "gemma-4-12b-it-qat-q4_0.gguf",
+          "Qwen3.8-27B-UD-IQ3_XXS.gguf",
+          "Qwen3.8-27B-UD-IQ4_XS.gguf",
+          "Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "Qwen3.5-2B-Q4_K_M.gguf",
+          "Qwen3.5-4B-Q4_K_M.gguf",
+          "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+          "Qwen3.8-9B-Q4_K_M.gguf",
+          "gemma-4-12b-it-Q4_K_M.gguf",
+          "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf"
         ],
         {
           "default": "Qwen3.8-27B-UD-IQ3_XXS.gguf"
@@ -1598,6 +1610,18 @@
           "min": 5,
           "max": 600
         }
+      ],
+      "permanent_key": [
+        "BOOLEAN",
+        {
+          "default": false
+        }
+      ],
+      "llm_config_json": [
+        "STRING",
+        {
+          "forceInput": true
+        }
       ]
     },
     "hidden": {}
@@ -1633,6 +1657,289 @@
         {
           "default": "song_",
           "multiline": false
+        }
+      ]
+    },
+    "optional": {},
+    "hidden": {}
+  },
+  "MiniMaxLLMSettings": {
+    "python_class": "MiniMaxLLMSettings",
+    "category": "Music Production Toolkit/llm",
+    "function": "configure",
+    "output_node": false,
+    "output_is_list": [],
+    "input_is_list": false,
+    "return_types": [
+      "STRING"
+    ],
+    "return_names": [
+      "llm_config_json"
+    ],
+    "required": {
+      "model": [
+        [
+          "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "Qwen_Qwen3.5-9B-Q5_K_M.gguf",
+          "Qwen_Qwen3.5-9B-Q6_K.gguf",
+          "gemma-4-12b-it-qat-q4_0.gguf",
+          "Qwen3.8-27B-UD-IQ3_XXS.gguf",
+          "Qwen3.8-27B-UD-IQ4_XS.gguf",
+          "Qwen3.8-27B-UD-Q4_K_M.gguf",
+          "Qwen3.5-2B-Q4_K_M.gguf",
+          "Qwen3.5-4B-Q4_K_M.gguf",
+          "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+          "Qwen3.8-9B-Q4_K_M.gguf",
+          "gemma-4-12b-it-Q4_K_M.gguf",
+          "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf"
+        ],
+        {
+          "default": "Qwen3.8-27B-UD-IQ3_XXS.gguf"
+        }
+      ],
+      "max_tokens": [
+        "INT",
+        {
+          "default": 24576,
+          "min": 1,
+          "max": 131072,
+          "step": 1
+        }
+      ],
+      "temperature": [
+        "FLOAT",
+        {
+          "default": 0.7,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.01
+        }
+      ],
+      "top_p": [
+        "FLOAT",
+        {
+          "default": 0.8,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        }
+      ],
+      "n_gpu_layers": [
+        "INT",
+        {
+          "default": -1,
+          "min": -1,
+          "max": 512,
+          "step": 1
+        }
+      ],
+      "n_ctx": [
+        "INT",
+        {
+          "default": 37376,
+          "min": 512,
+          "max": 262144,
+          "step": 256
+        }
+      ],
+      "auto_download": [
+        "BOOLEAN",
+        {
+          "default": true
+        }
+      ],
+      "chat_format": [
+        [
+          "auto",
+          "chatml",
+          "qwen",
+          "gemma",
+          "llama-3",
+          "none"
+        ],
+        {
+          "default": "auto"
+        }
+      ],
+      "thinking": [
+        [
+          "auto",
+          "on",
+          "off"
+        ],
+        {
+          "default": "off"
+        }
+      ],
+      "top_k": [
+        "INT",
+        {
+          "default": 40,
+          "min": 1,
+          "max": 1000,
+          "step": 1
+        }
+      ],
+      "min_p": [
+        "FLOAT",
+        {
+          "default": 0.0,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        }
+      ],
+      "repeat_penalty": [
+        "FLOAT",
+        {
+          "default": 1.1,
+          "min": 0.0,
+          "max": 3.0,
+          "step": 0.01
+        }
+      ],
+      "presence_penalty": [
+        "FLOAT",
+        {
+          "default": 0.0,
+          "min": -2.0,
+          "max": 2.0,
+          "step": 0.01
+        }
+      ],
+      "frequency_penalty": [
+        "FLOAT",
+        {
+          "default": 0.0,
+          "min": -2.0,
+          "max": 2.0,
+          "step": 0.01
+        }
+      ],
+      "seed": [
+        "INT",
+        {
+          "default": -1,
+          "min": -1,
+          "max": 2147483647,
+          "step": 1
+        }
+      ],
+      "split_mode": [
+        [
+          "none",
+          "layer",
+          "row"
+        ],
+        {
+          "default": "none"
+        }
+      ],
+      "tensor_split": [
+        "STRING",
+        {
+          "default": "",
+          "multiline": false
+        }
+      ],
+      "main_gpu": [
+        "INT",
+        {
+          "default": 0,
+          "min": 0,
+          "max": 16,
+          "step": 1
+        }
+      ],
+      "tensor_parallel": [
+        "BOOLEAN",
+        {
+          "default": false
+        }
+      ],
+      "backend": [
+        [
+          "In ComfyUI (GGUF)",
+          "Local app / server",
+          "Cloud service"
+        ],
+        {
+          "default": "In ComfyUI (GGUF)"
+        }
+      ],
+      "local_provider": [
+        [
+          "LM Studio",
+          "Ollama",
+          "llama.cpp",
+          "Unsloth Studio",
+          "vLLM",
+          "Other OpenAI-compatible server"
+        ],
+        {
+          "default": "LM Studio"
+        }
+      ],
+      "cloud_provider": [
+        [
+          "OpenAI",
+          "Claude (Anthropic)",
+          "Gemini (Google)",
+          "DeepSeek",
+          "Qwen (Alibaba Cloud)",
+          "MiniMax",
+          "OpenRouter",
+          "Groq",
+          "Other OpenAI-compatible cloud"
+        ],
+        {
+          "default": "OpenAI"
+        }
+      ],
+      "server_url": [
+        "STRING",
+        {
+          "default": ""
+        }
+      ],
+      "remote_model": [
+        "STRING",
+        {
+          "default": ""
+        }
+      ],
+      "api_key_env": [
+        "STRING",
+        {
+          "default": ""
+        }
+      ],
+      "credential_id": [
+        "STRING",
+        {
+          "default": ""
+        }
+      ],
+      "remote_max_tokens": [
+        "INT",
+        {
+          "default": 4096,
+          "min": 1,
+          "max": 131072
+        }
+      ],
+      "request_timeout": [
+        "INT",
+        {
+          "default": 120,
+          "min": 5,
+          "max": 600
+        }
+      ],
+      "permanent_key": [
+        "BOOLEAN",
+        {
+          "default": false
         }
       ]
     },
@@ -2280,6 +2587,42 @@
       ]
     },
     "optional": {},
+    "hidden": {}
+  },
+  "MiniMaxModelAdvisor": {
+    "python_class": "MiniMaxModelAdvisor",
+    "category": "Music Production Toolkit/utilities",
+    "function": "advise",
+    "output_node": false,
+    "output_is_list": [],
+    "input_is_list": false,
+    "return_types": [
+      "STRING",
+      "STRING"
+    ],
+    "return_names": [
+      "report",
+      "advice_json"
+    ],
+    "required": {
+      "detail": [
+        [
+          "summary",
+          "full"
+        ],
+        {
+          "default": "summary"
+        }
+      ]
+    },
+    "optional": {
+      "resources_json": [
+        "STRING",
+        {
+          "forceInput": true
+        }
+      ]
+    },
     "hidden": {}
   },
   "MiniMaxModelAutodownload": {
@@ -3738,7 +4081,7 @@
       "workflow_name": [
         "STRING",
         {
-          "default": "Music Production Toolkit 3.1.1",
+          "default": "Music Production Toolkit 3.1.2",
           "multiline": false
         }
       ],
@@ -5405,7 +5748,9 @@
       ],
       "whisper_model": [
         [
-          "whisper-large-v3"
+          "whisper-large-v3",
+          "whisper-large-v3-turbo",
+          "whisper-large-v3-turbo-int8"
         ],
         {
           "default": "whisper-large-v3"

@@ -308,6 +308,40 @@ def _vram_class(total_bytes: Optional[int]) -> Optional[int]:
     return VRAM_CLASSES[-1]
 
 
+def hardware_classes() -> List[str]:
+    """Every class id :func:`hardware_class` can return (for validation and docs)."""
+    return ["cpu"] + [f"vram_{upper}" for upper in VRAM_CLASSES] + ["vram_unknown"]
+
+
+def hardware_class(resources: ResourceSnapshot) -> str:
+    """The class of this machine: ``"cpu"``, ``"vram_<n>"`` or ``"vram_unknown"``.
+
+    The class is the smallest bucket in :data:`VRAM_CLASSES` that holds the
+    *largest* accelerator's total memory - the machine is classified by the card
+    a model would actually be loaded onto, not by a sum over devices, because
+    several GPUs are separate memory pools.
+
+    Two cases are deliberately not promoted to a number:
+
+    * a device whose total memory could not be read returns ``"vram_unknown"``,
+      so no candidate is ever claimed to fit on an unmeasured card;
+    * an Apple ``mps`` device has no dedicated VRAM, so its *unified* system
+      memory is used - that is the pool the weights come from there.
+    """
+    accelerators = resources.accelerators
+    if not accelerators:
+        return "cpu"
+    device = max(accelerators, key=lambda item: item.vram_total_bytes or 0)
+    if device.vram_total_bytes is None and device.kind == "mps":
+        measured = resources.ram_total_bytes
+    else:
+        measured = device.vram_total_bytes
+    if device.vram_total_bytes is None and device.kind != "mps":
+        return "vram_unknown"
+    vram_class = _vram_class(measured)
+    return f"vram_{vram_class}" if vram_class else "vram_unknown"
+
+
 def recommend_profiles(
     resources: ResourceSnapshot,
     catalog: Optional[Iterable[Dict[str, Any]]] = None,

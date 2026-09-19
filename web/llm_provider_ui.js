@@ -4,7 +4,20 @@ export const INTEGRATED = "In ComfyUI (GGUF)";
 export const LOCAL = "Local app / server";
 export const CLOUD = "Cloud service";
 export const CONNECTION_FIELDS = ["backend", "local_provider", "cloud_provider", "server_url", "api_key_env", "credential_id"];
-export const REMOTE_FIELDS = ["server_url", "remote_model", "api_key_env", "credential_id", "remote_max_tokens", "request_timeout"];
+export const REMOTE_FIELDS = ["server_url", "remote_model", "api_key_env", "credential_id", "remote_max_tokens", "request_timeout",
+    // Belongs to the connection, not to a single request: it decides what happens to
+    // this connection's key. Hidden with the other remote fields for the same reason.
+    "permanent_key"];
+
+/**
+ * Nodes that carry the same provider widgets: the chat node and the central
+ * settings node (``MiniMaxLLMSettings``, which holds the provider, model and
+ * sampler values for every call). Both get the same labels, the same visibility
+ * rules and the same buttons; ``llm_provider.js`` only wires that to the canvas.
+ * Kept here as data so the frontend test can require both node types - a new
+ * node that is missing from this set silently loses its provider UI.
+ */
+export const PROVIDER_NODES = new Set(["MiniMaxLLMChat", "MiniMaxLLMSettings"]);
 const BASIC = new Set(["enabled", "model", "max_tokens", "temperature", "n_ctx", "auto_download"]);
 
 /**
@@ -20,11 +33,11 @@ export const BUTTONS = {
     },
     llm_ui_key: {
         label: "Set API key…",
-        tooltip: "Stores a provider key in ComfyUI's memory for this session only. It is never written into the workflow or the production JSON, and it expires when ComfyUI restarts. Cloud requests are billed by the provider.",
+        tooltip: "Enters a provider key without putting it in the workflow. It stays in ComfyUI's memory for this session, or is stored on this computer when 'Keep API key after restart' is on. Cloud requests are billed by the provider.",
     },
     llm_ui_clear: {
         label: "Clear session key",
-        tooltip: "Forgets the session key entered for this connection. Runs fall back to the environment variable named in 'API key variable', if one is set.",
+        tooltip: "Forgets the key entered for this connection, including the copy stored with 'Keep API key after restart'. Runs then fall back to the environment variable named in 'API key variable', if one is set.",
     },
     llm_ui_models: {
         label: "Find models / test connection…",

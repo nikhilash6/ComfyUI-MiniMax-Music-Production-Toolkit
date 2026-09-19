@@ -6,39 +6,73 @@
     "method": "Hugging Face API (tree + revision endpoints, read-only, no download).",
     "revisions": "Every artifact is pinned to the commit sha of the repository at verification time, so the resolve URL is immutable even if the branch moves.",
     "hashes": "The HF API did not expose a sha256 for these artifacts (Xet/LFS storage), so NO hash is recorded. Sizes are exact as reported by the API. Do not add a hash that was not read from the file itself.",
-    "sizes": "bytes = exact size reported by the API for the pinned revision; verified against the URLs below with a HEAD request."
+    "sizes": "bytes = exact size reported by the API for the pinned revision; verified against the URLs below with a HEAD request.",
+    "catalog_ratings": "Every file carries a 1-5 star rating for this toolkit's task and, where it matters, the hardware classes it is intended for. Sizes and revisions were read from the Hugging Face tree API on 2026-09-19 and each pinned revision was confirmed against the repository's current commit."
   },
   "flashsr": {
-    "note": "Only the FlashSR weights are downloaded; the inference code is bundled with the toolkit in flashsr_inference/ (see flashsr_inference/NOTICE.md).",
+    "note": "FlashSR's three weights. The upstream repository jakeoneijk/FlashSR_weights stopped answering (HTTP 401, June 2026), so the catalog reads the same files - identical byte sizes - from the authors' repository instead.",
     "weights": {
       "target": "models/audio/flashsr",
       "files": [
         {
           "name": "student_ldm.pth",
-          "filename": "student_ldm.pth",
-          "repo_id": "jakeoneijk/FlashSR_weights",
-          "repo_type": "dataset",
-          "revision": "5701dea5f6a45ed964f5cb5b9280b3a1f9b39882",
+          "filename": "weights/student_ldm.pth",
+          "repo_id": "laion/FlashSR_One-step_Versatile_Audio_Super-resolution",
+          "repo_type": "model",
+          "revision": "02f023d307e5f17b915d60b731e78a9664d7029f",
           "bytes": 1033200174,
-          "timeout": 3600
+          "timeout": 1800,
+          "rating": 5,
+          "suits": [
+            "cpu",
+            "vram_4",
+            "vram_8",
+            "vram_12",
+            "vram_16",
+            "vram_24",
+            "vram_32"
+          ],
+          "rating_note": "FlashSR's diffusion student - required for audio super-resolution."
         },
         {
           "name": "sr_vocoder.pth",
-          "filename": "sr_vocoder.pth",
-          "repo_id": "jakeoneijk/FlashSR_weights",
-          "repo_type": "dataset",
-          "revision": "5701dea5f6a45ed964f5cb5b9280b3a1f9b39882",
+          "filename": "weights/sr_vocoder.pth",
+          "repo_id": "laion/FlashSR_One-step_Versatile_Audio_Super-resolution",
+          "repo_type": "model",
+          "revision": "02f023d307e5f17b915d60b731e78a9664d7029f",
           "bytes": 627861067,
-          "timeout": 3600
+          "timeout": 1800,
+          "rating": 5,
+          "suits": [
+            "cpu",
+            "vram_4",
+            "vram_8",
+            "vram_12",
+            "vram_16",
+            "vram_24",
+            "vram_32"
+          ],
+          "rating_note": "FlashSR's vocoder - required for audio super-resolution."
         },
         {
           "name": "vae.pth",
-          "filename": "vae.pth",
-          "repo_id": "jakeoneijk/FlashSR_weights",
-          "repo_type": "dataset",
-          "revision": "5701dea5f6a45ed964f5cb5b9280b3a1f9b39882",
+          "filename": "weights/vae.pth",
+          "repo_id": "laion/FlashSR_One-step_Versatile_Audio_Super-resolution",
+          "repo_type": "model",
+          "revision": "02f023d307e5f17b915d60b731e78a9664d7029f",
           "bytes": 1655458345,
-          "timeout": 3600
+          "timeout": 1800,
+          "rating": 5,
+          "suits": [
+            "cpu",
+            "vram_4",
+            "vram_8",
+            "vram_12",
+            "vram_16",
+            "vram_24",
+            "vram_32"
+          ],
+          "rating_note": "FlashSR's VAE - required for audio super-resolution."
         }
       ]
     }
@@ -55,7 +89,14 @@
         "target": "models/diffusion_models",
         "role": "diffusion",
         "bytes": 4914197682,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The reference diffusion model and the best quality/size balance for 16 GiB and more."
       },
       {
         "name": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
@@ -67,7 +108,15 @@
         "role": "text_encoder",
         "quantization": "int8_convrot",
         "bytes": 9196611886,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The smallest text encoder the repository offers (8.56 GiB) - the one that lets diffusion and encoder share a 16-24 GiB card."
       },
       {
         "name": "minimax_music3_dav.safetensors",
@@ -78,7 +127,18 @@
         "target": "models/vae",
         "role": "vae",
         "bytes": 216696128,
-        "timeout": 3600
+        "timeout": 3600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The decoder every MiniMax Music 3 run needs; 0.20 GiB, no alternative."
       },
       {
         "name": "minimax_music3_dit_int8_convrot.safetensors",
@@ -92,7 +152,70 @@
         "bytes": 2502161682,
         "timeout": 7200,
         "optional": true,
-        "note": "Smaller alternative to the fp16 DiT. Optional: it is not downloaded unless the optional artifacts are requested explicitly, so a family is never pulled in as a whole."
+        "note": "Smaller alternative to the fp16 DiT. Optional: it is not downloaded unless the optional artifacts are requested explicitly, so a family is never pulled in as a whole.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "Half the size of fp16 - the variant that makes a 12 GiB run realistic. Quantization cost not measured."
+      },
+      {
+        "name": "minimax_music3_dit_fp32.safetensors",
+        "filename": "diffusion_models/minimax_music3_dit_fp32.safetensors",
+        "repo_id": "Comfy-Org/MiniMax-Music-3",
+        "repo_type": "model",
+        "target": "models/diffusion_models",
+        "revision": "6baad88896848433857c170ba4f05d2ea9d5f218",
+        "bytes": 9828345396,
+        "timeout": 7200,
+        "role": "diffusion",
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 2,
+        "suits": [
+          "vram_32"
+        ],
+        "rating_note": "Full precision reference: twice the fp16 size with no measured gain for this task."
+      },
+      {
+        "name": "minimax_music3_text_encoder_pruned_bf16.safetensors",
+        "filename": "text_encoders/minimax_music3_text_encoder_pruned_bf16.safetensors",
+        "repo_id": "Comfy-Org/MiniMax-Music-3",
+        "repo_type": "model",
+        "target": "models/text_encoders",
+        "revision": "6baad88896848433857c170ba4f05d2ea9d5f218",
+        "bytes": 16706629398,
+        "timeout": 7200,
+        "role": "text_encoder",
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 3,
+        "suits": [
+          "vram_32"
+        ],
+        "rating_note": "Higher precision than the int8 encoder, but 15.56 GiB; only sensible with offload and no measured gain."
+      },
+      {
+        "name": "minimax_music3_text_encoder_bf16.safetensors",
+        "filename": "text_encoders/minimax_music3_text_encoder_bf16.safetensors",
+        "repo_id": "Comfy-Org/MiniMax-Music-3",
+        "repo_type": "model",
+        "target": "models/text_encoders",
+        "revision": "6baad88896848433857c170ba4f05d2ea9d5f218",
+        "bytes": 18472478038,
+        "timeout": 7200,
+        "role": "text_encoder",
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 2,
+        "suits": [
+          "vram_32"
+        ],
+        "rating_note": "Full precision reference encoder (17.20 GiB): the largest option in the catalog."
       }
     ]
   },
@@ -108,7 +231,14 @@
         "target": "models/diffusion_models",
         "role": "diffusion",
         "bytes": 7751105712,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Reference diffusion model for the album cover (bf16)."
       },
       {
         "name": "qwen_3_4b.safetensors",
@@ -119,7 +249,14 @@
         "target": "models/text_encoders",
         "role": "text_encoder",
         "bytes": 8044982048,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Reference text encoder for FLUX.2 klein (bf16, 7.49 GiB)."
       },
       {
         "name": "flux2-vae.safetensors",
@@ -130,18 +267,304 @@
         "target": "models/vae",
         "role": "vae",
         "bytes": 336211292,
-        "timeout": 3600
+        "timeout": 3600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The FLUX.2 VAE; there is no smaller variant."
+      },
+      {
+        "name": "flux-2-klein-4b-fp8.safetensors",
+        "filename": "flux-2-klein-4b-fp8.safetensors",
+        "repo_id": "black-forest-labs/FLUX.2-klein-4b-fp8",
+        "repo_type": "model",
+        "target": "models/diffusion_models",
+        "revision": "5b4408e59397a4a37ccb46afe426d8ed86379441",
+        "bytes": 4070624520,
+        "timeout": 7200,
+        "role": "diffusion",
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "Half the diffusion size of bf16 with a small, stated quality risk - the variant that brings the cover path to 8-12 GiB."
+      },
+      {
+        "name": "qwen_3_4b_fp4_flux2.safetensors",
+        "filename": "split_files/text_encoders/qwen_3_4b_fp4_flux2.safetensors",
+        "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-4b",
+        "repo_type": "model",
+        "target": "models/text_encoders",
+        "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe",
+        "bytes": 3848213998,
+        "timeout": 7200,
+        "role": "text_encoder",
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "The same encoder in fp4 (3.58 GiB) from the same repository - it halves the encoder's memory in the same workflow."
       }
     ]
   },
   "llm": {
-    "note": "Any llama.cpp-compatible GGUF placed in models/llm is offered by the integrated LLM chat node. No artifact URL is configured yet: the concrete recommendation depends on the hardware profile (L01), and an unverified URL is worse than no URL.",
-    "directory": "models/llm",
-    "example": {
-      "name": "Qwen3.8-27B-UD-IQ3_XXS.gguf",
-      "target": "models/llm",
-      "url": ""
-    }
+    "note": "Integrated LLM chat models (llama.cpp GGUF) for models/llm. Every file is pinned to the commit sha of the repository and was verified with a HEAD request against its resolve URL: HTTP 200 and exactly the byte size below. The candidates are the ones llm_profiles.py recommends per hardware class, plus smaller alternatives for 4-12 GiB cards; any other llama.cpp-compatible GGUF placed in models/llm is offered as well. Qwen 3.5/3.8 GGUFs use the Gated DeltaNet architecture and need a recent llama-cpp-python build - the Llama 3.1 and Mistral entries load on older builds. None of them is downloaded by the model check - select one and it downloads on first use.",
+    "target": "models/llm",
+    "files": [
+      {
+        "name": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+        "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+        "repo_id": "bartowski/Qwen_Qwen3.5-9B-GGUF",
+        "repo_type": "model",
+        "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+        "bytes": 6169341984,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "The smallest Qwen 3.5 9B quant: the first candidate for 8 GiB, and it still holds the section format."
+      },
+      {
+        "name": "Qwen_Qwen3.5-9B-Q5_K_M.gguf",
+        "filename": "Qwen_Qwen3.5-9B-Q5_K_M.gguf",
+        "repo_id": "bartowski/Qwen_Qwen3.5-9B-GGUF",
+        "repo_type": "model",
+        "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+        "bytes": 7111487520,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "More precision than Q4 at 7.1 GB; a comfortable choice for 10-12 GiB."
+      },
+      {
+        "name": "Qwen_Qwen3.5-9B-Q6_K.gguf",
+        "filename": "Qwen_Qwen3.5-9B-Q6_K.gguf",
+        "repo_id": "bartowski/Qwen_Qwen3.5-9B-GGUF",
+        "repo_type": "model",
+        "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+        "bytes": 7958818848,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "Near-lossless 9B quant for 12-16 GiB; the context, not the precision, is the limit here."
+      },
+      {
+        "name": "gemma-4-12b-it-qat-q4_0.gguf",
+        "filename": "gemma-4-12b-it-qat-q4_0.gguf",
+        "repo_id": "google/gemma-4-12B-it-qat-q4_0-gguf",
+        "repo_type": "model",
+        "revision": "29d097773436b69ff9feafd636ab4cf873786537",
+        "bytes": 6975879296,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 5,
+        "suits": [
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "The workflow's everyday candidate: quantization-aware training keeps it close to full precision at 7.0 GB."
+      },
+      {
+        "name": "Qwen3.8-27B-UD-IQ3_XXS.gguf",
+        "filename": "Qwen3.8-27B-UD-IQ3_XXS.gguf",
+        "repo_id": "unsloth/Qwen3.8-27B-GGUF",
+        "repo_type": "model",
+        "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+        "bytes": 10934860704,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_16",
+          "vram_24"
+        ],
+        "rating_note": "Quality comparison for 16 GiB. Its active MoE parameters do not describe its resident size."
+      },
+      {
+        "name": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+        "filename": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+        "repo_id": "unsloth/Qwen3.8-27B-GGUF",
+        "repo_type": "model",
+        "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+        "bytes": 14252845984,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 5,
+        "suits": [
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The best quality-per-byte point of the 27B family for a 24 GiB card."
+      },
+      {
+        "name": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "filename": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "repo_id": "unsloth/Qwen3.8-27B-GGUF",
+        "repo_type": "model",
+        "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+        "bytes": 16464440224,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_32"
+        ],
+        "rating_note": "Largest catalog quant; a marginal quality gain over IQ4_XS for 2 GB more."
+      },
+      {
+        "name": "Qwen3.5-2B-Q4_K_M.gguf",
+        "filename": "Qwen3.5-2B-Q4_K_M.gguf",
+        "repo_id": "unsloth/Qwen3.5-2B-GGUF",
+        "repo_type": "model",
+        "revision": "f6d5376be1edb4d416d56da11e5397a961aca8ae",
+        "bytes": 1280835840,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 2,
+        "suits": [
+          "cpu",
+          "vram_4"
+        ],
+        "rating_note": "Smallest candidate (1.19 GiB). Keeps the section format only roughly - a last resort for very little memory or a CPU-only test run."
+      },
+      {
+        "name": "Qwen3.5-4B-Q4_K_M.gguf",
+        "filename": "Qwen3.5-4B-Q4_K_M.gguf",
+        "repo_id": "unsloth/Qwen3.5-4B-GGUF",
+        "repo_type": "model",
+        "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+        "bytes": 2740937888,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "Runs on 4 GiB and on the CPU; expect to check and re-run longer structured answers."
+      },
+      {
+        "name": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "repo_id": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+        "repo_type": "model",
+        "revision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
+        "bytes": 4920739232,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "The safe fallback: plain llama architecture, so it loads even in an older llama.cpp build, and it is multilingual."
+      },
+      {
+        "name": "Qwen3.8-9B-Q4_K_M.gguf",
+        "filename": "Qwen3.8-9B-Q4_K_M.gguf",
+        "repo_id": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+        "repo_type": "model",
+        "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+        "bytes": 5780090176,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "Reasoning-distilled 9B with strong instruction following; its thinking tokens count against max_tokens."
+      },
+      {
+        "name": "gemma-4-12b-it-Q4_K_M.gguf",
+        "filename": "gemma-4-12b-it-Q4_K_M.gguf",
+        "repo_id": "unsloth/gemma-4-12b-it-GGUF",
+        "repo_type": "model",
+        "revision": "fc034cfff751157913579611efad8462ac1be606",
+        "bytes": 7121861440,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "The same family as the QAT candidate with standard K-quants: slightly larger, all context lengths."
+      },
+      {
+        "name": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+        "filename": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+        "repo_id": "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+        "repo_type": "model",
+        "revision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
+        "bytes": 7477208192,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 3,
+        "suits": [
+          "vram_12",
+          "vram_16"
+        ],
+        "rating_note": "Multilingual (German is listed by the authors) and llama architecture; older and less inventive than the newer families."
+      }
+    ],
+    "directory": "models/llm"
   },
   "yue2": {
     "note": "Comfy-Org native YuE2 BF16 checkpoint. Verified via the public HF tree API on 2026-09-14.",
@@ -154,7 +577,33 @@
         "revision": "8e6fcf0f23252ed188b634bd50d44f4b01fba890",
         "target": "models/checkpoints",
         "bytes": 7799983228,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Reference checkpoint for song generation and audio covers."
+      },
+      {
+        "name": "yue2_3b_int8_convrot.safetensors",
+        "filename": "checkpoints/yue2_3b_int8_convrot.safetensors",
+        "repo_id": "Comfy-Org/YuE2",
+        "repo_type": "model",
+        "target": "models/checkpoints",
+        "revision": "8e6fcf0f23252ed188b634bd50d44f4b01fba890",
+        "bytes": 3960938800,
+        "timeout": 7200,
+        "optional": true,
+        "no_auto_download": true,
+        "note": "Checked and reported, never downloaded by the model check: a language model is several gigabytes, so it downloads where it is actually selected. Choose it in the LLM settings node (or on the chat node) and the node fetches it on first use when auto_download is on.",
+        "rating": 4,
+        "suits": [
+          "vram_8",
+          "vram_12"
+        ],
+        "rating_note": "The same 3B model at half the size (3.69 GiB) - the variant that fits 8-12 GiB. Quantization cost not measured."
       }
     ]
   },
@@ -169,12 +618,23 @@
         "revision": "8e6fcf0f23252ed188b634bd50d44f4b01fba890",
         "target": "models/audio_encoders",
         "bytes": 1386868122,
-        "timeout": 3600
+        "timeout": 3600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "The only SheetSage2 checkpoint in ComfyUI's audio-encoder format; needed for audio-to-score covers."
       }
     ]
   },
   "whisper": {
-    "note": "Optional original-lyrics transcription for YuE2 covers. Only selected when the cover lyrics mode is 'original lyrics'. These are the CTranslate2 files consumed by the optional faster-whisper engine (requirements-whisper.txt); the target folder name is the value of the 'Whisper model' field. Verified via the public HF API on 2026-09-16: repository ungated, MIT licence, commit sha pinned below.",
+    "note": "Lyrics transcription (faster-whisper / CTranslate2) inside models/audio_encoders. Each model is a folder of its own; the node's Whisper model dropdown is derived from these targets, and the folder that was selected is the one that gets fetched when it is missing. large-v3 is the reference; the turbo folder is roughly half the size and faster, the int8 turbo is the smallest option. The model check downloads only large-v3, so a checkbox never pulls in several checkpoints.",
     "target": "models/audio_encoders/whisper-large-v3",
     "files": [
       {
@@ -184,7 +644,17 @@
         "repo_type": "model",
         "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "bytes": 3087284237,
-        "timeout": 7200
+        "timeout": 7200,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "large-v3 is the reference for sung, mixed and multilingual material."
       },
       {
         "name": "config.json",
@@ -193,7 +663,18 @@
         "repo_type": "model",
         "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "bytes": 2394,
-        "timeout": 600
+        "timeout": 600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Checkpoint configuration of the selected Whisper model."
       },
       {
         "name": "preprocessor_config.json",
@@ -202,7 +683,18 @@
         "repo_type": "model",
         "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "bytes": 340,
-        "timeout": 600
+        "timeout": 600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Feature extractor settings (128 mel bins) of the selected model."
       },
       {
         "name": "tokenizer.json",
@@ -211,7 +703,18 @@
         "repo_type": "model",
         "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "bytes": 2480617,
-        "timeout": 600
+        "timeout": 600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Tokenizer of the selected Whisper model."
       },
       {
         "name": "vocabulary.json",
@@ -220,7 +723,228 @@
         "repo_type": "model",
         "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
         "bytes": 1068114,
-        "timeout": 600
+        "timeout": 600,
+        "rating": 5,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Decoder vocabulary of the selected Whisper model."
+      },
+      {
+        "name": "model.bin",
+        "filename": "model.bin",
+        "repo_id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+        "repo_type": "model",
+        "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+        "bytes": 1617884929,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo",
+        "optional": true,
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "About half the size of large-v3 and noticeably faster, close to it on clear vocals; slightly weaker on dense, effect-heavy mixes.",
+        "note": "Alternative Whisper checkpoint in models/audio_encoders/whisper-large-v3-turbo. The model check downloads only large-v3; the node fetches this folder when this model is selected and it is still missing."
+      },
+      {
+        "name": "config.json",
+        "filename": "config.json",
+        "repo_id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+        "repo_type": "model",
+        "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+        "bytes": 2263,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo",
+        "optional": true,
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo checkpoint folder."
+      },
+      {
+        "name": "preprocessor_config.json",
+        "filename": "preprocessor_config.json",
+        "repo_id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+        "repo_type": "model",
+        "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+        "bytes": 340,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo",
+        "optional": true,
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo checkpoint folder."
+      },
+      {
+        "name": "tokenizer.json",
+        "filename": "tokenizer.json",
+        "repo_id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+        "repo_type": "model",
+        "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+        "bytes": 2710337,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo",
+        "optional": true,
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo checkpoint folder."
+      },
+      {
+        "name": "vocabulary.json",
+        "filename": "vocabulary.json",
+        "repo_id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+        "repo_type": "model",
+        "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+        "bytes": 1068114,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo",
+        "optional": true,
+        "rating": 4,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8",
+          "vram_12",
+          "vram_16",
+          "vram_24",
+          "vram_32"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo checkpoint folder."
+      },
+      {
+        "name": "model.bin",
+        "filename": "model.bin",
+        "repo_id": "Zoont/faster-whisper-large-v3-turbo-int8-ct2",
+        "repo_type": "model",
+        "revision": "846f74797293e5f605d509a6ab5395a1f2f2874e",
+        "bytes": 814054531,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo-int8",
+        "optional": true,
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "The smallest option (0.76 GiB) for very little memory; the int8 quantization cost on singing is not measured.",
+        "note": "Alternative Whisper checkpoint in models/audio_encoders/whisper-large-v3-turbo-int8. The model check downloads only large-v3; the node fetches this folder when this model is selected and it is still missing."
+      },
+      {
+        "name": "config.json",
+        "filename": "config.json",
+        "repo_id": "Zoont/faster-whisper-large-v3-turbo-int8-ct2",
+        "repo_type": "model",
+        "revision": "846f74797293e5f605d509a6ab5395a1f2f2874e",
+        "bytes": 2487,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo-int8",
+        "optional": true,
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder."
+      },
+      {
+        "name": "preprocessor_config.json",
+        "filename": "preprocessor_config.json",
+        "repo_id": "Zoont/faster-whisper-large-v3-turbo-int8-ct2",
+        "repo_type": "model",
+        "revision": "846f74797293e5f605d509a6ab5395a1f2f2874e",
+        "bytes": 340,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo-int8",
+        "optional": true,
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder."
+      },
+      {
+        "name": "tokenizer.json",
+        "filename": "tokenizer.json",
+        "repo_id": "Zoont/faster-whisper-large-v3-turbo-int8-ct2",
+        "repo_type": "model",
+        "revision": "846f74797293e5f605d509a6ab5395a1f2f2874e",
+        "bytes": 2710337,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo-int8",
+        "optional": true,
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder."
+      },
+      {
+        "name": "vocabulary.json",
+        "filename": "vocabulary.json",
+        "repo_id": "Zoont/faster-whisper-large-v3-turbo-int8-ct2",
+        "repo_type": "model",
+        "revision": "846f74797293e5f605d509a6ab5395a1f2f2874e",
+        "bytes": 1119981,
+        "timeout": 3600,
+        "target": "models/audio_encoders/whisper-large-v3-turbo-int8",
+        "optional": true,
+        "rating": 3,
+        "suits": [
+          "cpu",
+          "vram_4",
+          "vram_8"
+        ],
+        "rating_note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder.",
+        "note": "Part of the whisper-large-v3-turbo-int8 checkpoint folder."
       }
     ]
   }

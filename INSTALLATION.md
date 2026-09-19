@@ -109,6 +109,18 @@ cover to obtain the pinned large-v3 files in `models/audio_encoders/whisper-larg
 (about 2.9 GB). For custom graphs, a reviewed transcript can instead be wired to
 the prompt/parser's `cover_lyrics` inputs; see [cover modes](docs/YUE2.md#cover-lyrics-modes).
 
+Two smaller checkpoints are in the catalog as well. They are **not** part of the
+`whisper_models` checkbox — selecting one in the node's **Whisper model** dropdown is what
+fetches it (each has its own folder, which is the dropdown value):
+
+| Folder (`models/audio_encoders/…`) | Size | For | ★ |
+|---|---|---|---|
+| `whisper-large-v3-turbo` | 1.51 GiB | CPU, ≤ 8 GiB VRAM; near large-v3 on clear vocals | ★★★★☆ |
+| `whisper-large-v3-turbo-int8` | 0.76 GiB | very little memory | ★★★☆☆ |
+
+The reference remains `whisper-large-v3` (2.88 GiB, ★★★★★). The int8 quantization cost on
+singing is not measured.
+
 ### Integrated LLM chat
 
 The LLM node also supports **Local app / server** and **Cloud service** modes.
@@ -218,8 +230,10 @@ commit-pinned catalog and manual placement.
   Neither the nodes nor their `INPUT_TYPES` ever touch the network at load time; the transfer only starts when you ask for it.
 - **Downloads are resumable and verified.** An interrupted transfer keeps a partial that a later run continues (HTTP range/ETag), retries transient failures, and publishes the file only after its size (and hash, where one is recorded) checks out. `Retry-After` is honoured; a 401/403/404 fails immediately instead of retrying.
 - The **MiniMax Music 3** files and the **FLUX.2 Klein** files are publicly readable in the Comfy-Org mirrors; no token is needed for those. A gated source would be reported separately, with its permission problem named.
-- The FlashSR **inference code is bundled** in `flashsr_inference/` (see [attribution](flashsr_inference/NOTICE.md)); only its three weights (`student_ldm.pth`, `sr_vocoder.pth`, `vae.pth`) download to `models/audio/flashsr/`. Other enabled checks may download the selected MiniMax, YuE2, SheetSage2, FLUX or GGUF artifacts from the configured catalog. The main workflow skips checks for inactive song models and disabled artwork/refinement stages.
+- The FlashSR **inference code is bundled** in `flashsr_inference/` (see [attribution](flashsr_inference/NOTICE.md)); only its three weights (`student_ldm.pth`, `sr_vocoder.pth`, `vae.pth`) download to `models/audio/flashsr/`. Other enabled checks may download the selected MiniMax, YuE2, SheetSage2, FLUX or GGUF artifacts from the configured catalog. The main workflow skips checks for inactive song models and disabled artwork/refinement stages. If the FlashSR weights are neither installed nor downloadable, the refinement stage switches itself off with one warning line (the audio passes through unchanged) instead of ending the run - a failed weight download for the *song* models still aborts, because no song can be generated without them.
 - Alternative quantizations (e.g. the int8 DiT) are marked `"optional": true` in the catalog and are **never** downloaded automatically — a family is not pulled in as a whole.
+- **Which model for this machine?** Every catalog entry carries a **1–5 star rating** for the task it serves and, where it matters, the hardware classes it was intended for. The **Model advisor** node (`Model advisor · what suits this machine`) reads the detected hardware, reports per task which file fits — with the free budget and the stated margin — and shows the smaller alternatives when the recommended one does not fit. The same lines appear in the ComfyUI log, and the second output is JSON for an app UI. Ratings judge suitability *for this toolkit's tasks*; they are a documented judgement, not a benchmark.
+- A model selected in a dropdown is fetched where it is selected: the LLM node downloads the chosen GGUF, and the Whisper node downloads the chosen checkpoint folder. The group checkboxes stay conservative and never pull in several alternatives at once.
 - Set the per-node `auto_download` toggle to OFF to fail fast instead of downloading.
 
 **All model paths follow ComfyUI's own configuration.** The toolkit resolves targets through `folder_paths.models_dir`, so a ComfyUI started with `--models-directory "F:\ComfyUI\models"` looks for FlashSR under `F:\ComfyUI\models\audio\flashsr` and for GGUFs under `F:\ComfyUI\models\llm` — never under the default base directory. Verify the resolution on any machine with:
@@ -244,6 +258,20 @@ ComfyUI/models/
 
 Use official ComfyUI/MiniMax model sources for current downloads and licensing terms. Other compatible quantizations can be selected in the workflow.
 
+Smaller alternatives in the same repository (catalog entries marked *optional*; the
+model advisor rates them for this task and reports whether they fit your card):
+
+| File | Size | For | ★ |
+|---|---|---|---|
+| `minimax_music3_dit_int8_convrot.safetensors` | 2.33 GiB | ≤ 12 GiB VRAM | ★★★★☆ |
+| `minimax_music3_text_encoder_pruned_bf16.safetensors` | 15.56 GiB | ≥ 24 GiB, higher precision | ★★★☆☆ |
+| `minimax_music3_dit_fp32.safetensors` | 9.15 GiB | reference precision only | ★★☆☆☆ |
+| `minimax_music3_text_encoder_bf16.safetensors` | 17.20 GiB | reference encoder | ★★☆☆☆ |
+
+The pruned **int8** text encoder (8.56 GiB, already referenced above) is the smallest
+one the repository offers — it is what makes a 16 GiB card workable. There is no fp8 file
+in the official repository and no smaller VAE.
+
 ## 4. FLUX.2 Klein cover models
 
 The example artwork branch references:
@@ -260,9 +288,21 @@ ComfyUI/models/
 
 Choose matching official model variants if your installation uses different filenames/quantizations.
 
+For cards below ~16 GiB there is a smaller pair, both from official repositories and
+loadable with the same core nodes (catalog entries marked *optional*):
+
+| File | Size | For | ★ |
+|---|---|---|---|
+| `flux-2-klein-4b-fp8.safetensors` (black-forest-labs) | 3.79 GiB | ≤ 12 GiB VRAM | ★★★★☆ |
+| `qwen_3_4b_fp4_flux2.safetensors` (Comfy-Org, same repo as the encoder) | 3.58 GiB | ≤ 12 GiB VRAM | ★★★★☆ |
+
+Both belong to `diffusion_models/` and `text_encoders/` respectively. There is no smaller
+VAE, and the GGUF variants of FLUX.2 need the extra *ComfyUI-GGUF* custom node, which this
+toolkit deliberately does not require.
+
 ## 5. Local LLM
 
-Install a GGUF model supported by your LLM node. The workflow includes one example filename only; that model is not bundled.
+Install a GGUF model supported by your LLM node. The candidates are listed in `models_config.json` with their repository, a pinned commit and their byte size; the LLM node's **Model** dropdown offers them **before** they are on disk, and the first run with a selected model downloads it into `ComfyUI/models/llm/` while `auto_download` is on (the default). Any other llama.cpp-compatible GGUF placed in that folder is offered as well. The files themselves are not bundled with the toolkit, and the model check never starts one of these downloads - it reports them, because a run needs at most one.
 
 The bundled production workflows' integrated GGUF settings use:
 
@@ -285,14 +325,16 @@ Keep `trim_long_prompt` off for covers. With trimming off an oversized prompt is
 
 The toolkit ships a small hardware-profile table (`llm_profiles.py`) and logs the recommendation for the detected device once per run. It is a **starting point, not a measurement**: every size below is the **file size** read from the repository (2026-09-11), not a VRAM promise - context/KV state, compute buffers and backend overhead come on top.
 
-- **CPU only:** small 2-4B class, short context, compact prompt. A large model is not pushed onto the CPU by default. No verified small-model artifact is shipped yet, so check a concrete GGUF (file size, backend support) before committing to one.
-- **Up to 8 GiB VRAM:** prefer the small 4B class; the 9B Q4_K_M (6.17 GB file) is an option **only after** the free VRAM was actually checked against it. 4-8k context.
-- **10-12 GiB:** Qwen 3.5 9B Q5_K_M (7.11 GB) or Gemma 4 12B QAT Q4_0 (6.98 GB); start at 8k.
-- **16 GiB:** Gemma 4 12B QAT or Qwen 3.5 9B Q6_K (7.96 GB) as everyday candidates, Qwen 3.8 27B UD-IQ3_XXS (10.93 GB) as a quality comparison; 8-16k by actual input length.
-- **24 GiB:** 27B at UD-IQ4_XS (14.25 GB) or higher; a large context only when the input needs it.
-- **32 GiB or more:** larger quantizations (UD-Q4_K_M, 16.46 GB) as an explicit quality profile; on several GPUs measure a split against a single card instead of assuming a gain.
+- **CPU only:** the small class (2–4B). A large model is not pushed onto the CPU by default. `Qwen3.5-2B-Q4_K_M.gguf` (1.19 GiB, ★★☆☆☆) and `Qwen3.5-4B-Q4_K_M.gguf` (2.55 GiB, ★★★☆☆) are catalog candidates now, and both load there — expect to check and re-run longer answers.
+- **Up to 8 GiB VRAM:** `Qwen3.5-9B-Q4_K_M` (6.17 GiB, ★★★★☆) after an actual budget check, or the smaller `Qwen3.5-4B-Q4_K_M` (2.55 GiB) / `Llama-3.1-8B-Instruct-Q4_K_M` (4.58 GiB, ★★★★☆, plain `llama` architecture and therefore safe in older llama.cpp builds). 4–8k context.
+- **10–12 GiB:** Qwen 3.5 9B Q5_K_M (7.11 GiB, ★★★★☆), `Qwen3.8-9B-Q4_K_M` (5.38 GiB, ★★★★☆ reasoning distill) or Gemma 4 12B QAT Q4_0 (6.98 GiB, ★★★★★); start at 8k. `gemma-4-12b-it-Q4_K_M` (6.63 GiB, ★★★★☆) and `Mistral-Nemo-Instruct-2407-Q4_K_M` (6.96 GiB, ★★★☆☆, multilingual incl. German) are in the catalog for this class as well.
+- **16 GiB:** Gemma 4 12B QAT or Qwen 3.5 9B Q6_K (7.96 GiB) as everyday candidates, Qwen 3.8 27B UD-IQ3_XXS (10.93 GiB) as a quality comparison; 8–16k by actual input length.
+- **24 GiB:** 27B at UD-IQ4_XS (14.25 GiB, ★★★★★) or higher; a large context only when the input needs it.
+- **32 GiB or more:** larger quantizations (UD-Q4_K_M, 16.46 GiB) as an explicit quality profile; on several GPUs measure a split against a single card instead of assuming a gain.
 
 Two cautions the profiles state explicitly: the **active parameters of an MoE model are not its resident weight memory**, and bigger is not automatically better or faster for this task. Model quality for this workflow is not measured yet - see the baseline harness in `DEVELOPMENT.md`.
+
+**Architecture check:** the Qwen 3.5/3.8 GGUFs use the *Gated DeltaNet* architecture and need a recent `llama-cpp-python` build — an older build refuses to load them. The `Llama-3.1` and `Mistral-Nemo` entries are ordinary `llama` architecture and load everywhere. Every entry above carries a 1–5 star rating in `models_config.json` (with the reason in `rating_note`), and the **Model advisor** node reports which of them fit the detected card — including the combination, since the model and its context are not the only memory a run needs.
 
 Optional runtime tuning lives in `models_config.json` under `llm.runtime_options` (for example `{"n_ubatch": 256}`). A parameter is only passed when the installed `llama-cpp-python` build declares it; unsupported or misspelled options are reported in the log instead of being ignored silently, and an accepted option becomes part of the model's cache identity. The node's widgets are unchanged, so existing workflows keep their saved values.
 

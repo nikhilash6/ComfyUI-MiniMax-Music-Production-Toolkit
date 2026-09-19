@@ -55,6 +55,8 @@ NODE_OWNER = {
     "MiniMaxFlashSRAudio": "flashsr_audio",
     "MiniMaxAudioBranchSelect": "minimax_audio_branch",
     "MiniMaxLLMChat": "llm_chat",
+    "MiniMaxLLMSettings": "llm_config",
+    "MiniMaxModelAdvisor": "model_advisor",
     "MiniMaxLLMSessionId": "session_utils",
     "MiniMaxLLMTemplateV16": "minimax_prompt_source",
     "MiniMaxLLMUnload": "llm_chat",

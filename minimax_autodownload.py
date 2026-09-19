@@ -46,6 +46,22 @@ def wants_original_lyrics(profile, cover_source_json="") -> bool:
     return normalize_lyrics_mode(source.get("lyrics_mode")) in {LYRICS_MODE_ORIGINAL, "new lyrics"}
 
 
+def flashsr_weight_names() -> set:
+    """The catalog names of FlashSR's weights (the optional refinement stage).
+
+    The stage has a pass-through fallback: the audio node skips itself, logs why and
+    returns its input unchanged. A failed download for these files must therefore be
+    reported rather than fatal - a run that can still produce the song must not end
+    because a quality refinement is unavailable.
+    """
+    try:
+        section = (load_models_config().get("flashsr", {}) or {}).get("weights", {}) or {}
+    except Exception:  # pragma: no cover - a broken catalog is reported elsewhere
+        return set()
+    return {str(entry.get("name")) for entry in (section.get("files") or [])
+            if isinstance(entry, dict) and entry.get("name")}
+
+
 class MiniMaxModelAutodownload:
     """Check and optionally download the models used by the example workflow."""
 
@@ -113,10 +129,19 @@ class MiniMaxModelAutodownload:
 
         failed = [item for item in preflight["entries"] if item["status"] == "failed"]
         if failed and auto_download:
-            raise RuntimeError(
-                "Model auto-download failed for: "
-                + ", ".join(f"{item['name']} ({item['message']})" for item in failed)
-            )
+            optional_names = flashsr_weight_names()
+            optional_failed = [item for item in failed if item["name"] in optional_names]
+            blocking = [item for item in failed if item["name"] not in optional_names]
+            for item in optional_failed:
+                LOGGER.warning(
+                    "FlashSR refinement will be skipped: %s (%s). The audio passes through unchanged.",
+                    item["name"], item["message"],
+                )
+            if blocking:
+                raise RuntimeError(
+                    "Model auto-download failed for: "
+                    + ", ".join(f"{item['name']} ({item['message']})" for item in blocking)
+                )
         # The single STRING output stays exactly as before (workflow compatible);
         # the structured report is offered through the node's UI payload so a
         # frontend can show counts, missing bytes and space without parsing text.

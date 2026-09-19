@@ -46,6 +46,16 @@ n_ctx      = 37376
 
 This is intentionally generous because the model may need to produce a detailed Caption, long instrumental section structure, lyrics, title and cover prompt in one response, and thinking is generated inside the same context. If your selected GGUF model or hardware needs less context, reduce these values together rather than assuming the example settings are universal.
 
+The three LLM calls in this workflow - the song request and the two Cover Studio
+calls - take their settings from **LLM settings · central** and receive them on
+`llm_config_json`. Its values win field by field over the chat node's own
+widgets, so the calls cannot drift apart; per-call settings (`enabled`, the
+prompt texts, `reset_session`) stay on the chat nodes, and the connection is
+optional. The **Model** dropdown on that node also lists the GGUF candidates the
+toolkit verified (repository, commit, size) even before they are on disk; the
+first run with a selected model downloads it into `ComfyUI/models/llm/` while
+`auto_download` is on. See [LLM_PROVIDERS.md](LLM_PROVIDERS.md).
+
 The LLM reruns on every queued execution through ComfyUI's `IS_CHANGED` hook,
 even with unchanged prompts. The session-ID helper and input are no longer
 needed. Cloud mode can therefore incur a new API charge on each run.

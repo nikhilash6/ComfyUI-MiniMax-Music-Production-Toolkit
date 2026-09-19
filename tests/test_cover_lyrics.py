@@ -773,13 +773,43 @@ class WhisperCatalogTests(unittest.TestCase):
         config = json.loads((ROOT / "models_config.json").read_text(encoding="utf-8"))
         group = config["whisper"]
         self.assertEqual(group["target"], "models/audio_encoders/whisper-large-v3")
-        names = [entry["name"] for entry in group["files"]]
+        default = [entry for entry in group["files"] if not entry.get("target")]
+        names = [entry["name"] for entry in default]
         self.assertEqual(names, ["model.bin", "config.json", "preprocessor_config.json",
                                  "tokenizer.json", "vocabulary.json"])
-        for entry in group["files"]:
+        for entry in default:
             self.assertEqual(entry["repo_id"], "Systran/faster-whisper-large-v3")
             self.assertEqual(entry["revision"], "edaa852ec7e145841d8ffdb056a99866b5f0a478")
             self.assertGreater(entry["bytes"], 0)
+
+    def test_smaller_checkpoints_are_alternatives_in_their_own_folders(self):
+        """The turbo variants are catalog-only: the group check must not fetch them.
+
+        They are the smaller options for weak machines, and their folder is the model
+        dropdown value - but a checkbox that asks for 'whisper models' must not pull in
+        two or three checkpoints. The node fetches the *selected* one on demand; this
+        test pins both halves.
+        """
+        config = json.loads((ROOT / "models_config.json").read_text(encoding="utf-8"))
+        alternatives = [entry for entry in config["whisper"]["files"] if entry.get("target")]
+        self.assertEqual({entry["target"] for entry in alternatives}, {
+            "models/audio_encoders/whisper-large-v3-turbo",
+            "models/audio_encoders/whisper-large-v3-turbo-int8",
+        })
+        for entry in alternatives:
+            self.assertTrue(entry["optional"], entry["name"])
+            self.assertFalse(entry.get("no_auto_download"),
+                             "the node fetches the selected folder, so the entry must stay fetchable")
+            self.assertGreater(entry["bytes"], 0)
+            self.assertTrue(entry.get("rating"))
+        selected = self.downloader.normalize_model_entries(
+            self.downloader.load_models_config(), minimax=False, yue2=False, sheetsage2=False,
+            flux2=False, flashsr=False, llm=False, whisper=True)
+        self.assertTrue(all(entry["target"] == "models/audio_encoders/whisper-large-v3"
+                            for entry in selected))
+        self.assertEqual(len(selected), 5, "the checkbox fetches the default checkpoint only")
+        self.assertEqual(self.whisper.whisper_model_choices(), [
+            "whisper-large-v3", "whisper-large-v3-turbo", "whisper-large-v3-turbo-int8"])
 
     def test_group_is_off_unless_requested(self):
         config = self.downloader.load_models_config()

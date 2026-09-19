@@ -164,9 +164,21 @@ class LlmDiagnosticsSourceTests(unittest.TestCase):
         self.assertEqual(checker.bare, [], "placeholder braces must live inside an f-string")
         self.assertIn('f"{type(exc).__name__}: {exc}"', self.source)
 
-    def test_stream_completion_reports_chunks_not_tokens(self):
+    def test_stream_completion_names_the_count_and_the_backend_usage(self):
+        """One stream piece is one decoded token *in this backend* - and it says so.
+
+        This path drives llama.cpp locally, which detokenises token by token, so the bar
+        may label its unit ``token`` (YuE2's bar does the same via
+        ``comfy.utils.model_trange(..., unit="token")``). The honesty rule is preserved by
+        tying the claim to the backend in the source and by reporting the backend's own
+        usage block as the authoritative count - a provider that batches several tokens
+        into one chunk never goes through this function.
+        """
+        self.assertIn('unit="token"', self.source)
+        self.assertIn("one stream piece per decoded token", self.source)
+        self.assertIn("counted by the backend", self.source)
+        self.assertIn('"LLM streaming finished:', self.source)
         self.assertNotIn("LLM streaming finished: %d tokens.", self.source)
-        self.assertIn("stream chunk(s)", self.source)
 
     def test_failed_model_close_is_reported(self):
         silent = '        except Exception:\n            pass\n        LOGGER.info("Unloaded LLM model'

@@ -40,8 +40,14 @@ class ModelsConfigTests(unittest.TestCase):
         self.assertEqual(len(flashsr["weights"]["files"]), 3)
         for entry in flashsr["weights"]["files"]:
             self.assertTrue(entry["name"].endswith(".pth"))
-            self.assertEqual(entry["repo_id"], "jakeoneijk/FlashSR_weights")
-            self.assertEqual(entry["repo_type"], "dataset")
+            # The old source (jakeoneijk/FlashSR_weights) stopped answering on 2026-09-19
+            # - every request returns HTTP 401, repo-wide - so the catalog reads the same
+            # three files, with identical byte sizes, from the authors' repository.  The
+            # remote path is "weights/<name>"; the local name the runtime opens is <name>.
+            self.assertEqual(entry["repo_id"],
+                             "laion/FlashSR_One-step_Versatile_Audio_Super-resolution")
+            self.assertEqual(entry["repo_type"], "model")
+            self.assertEqual(entry["filename"], f"weights/{entry['name']}")
             self.assertRegex(entry["revision"], r"^[0-9a-f]{40}$")
             self.assertGreater(entry["bytes"], 0)
         # The inference code is bundled with the toolkit, not downloaded.
@@ -49,7 +55,17 @@ class ModelsConfigTests(unittest.TestCase):
         self.assertNotIn("torchjaekwon_repo", flashsr)
         required_minimax = [entry for entry in config["minimax"]["files"] if not entry.get("optional")]
         self.assertEqual(len(required_minimax), 3)
-        self.assertEqual(len(config["flux2"]["files"]), 3)
+        required_flux2 = [entry for entry in config["flux2"]["files"] if not entry.get("optional")]
+        self.assertEqual(len(required_flux2), 3)
+        # The smaller alternatives (fp8 diffusion, fp4 text encoder, int8/fp32/int8-pruned
+        # MiniMax variants, int8 YuE2) are `optional`: they are catalog and advisor entries
+        # that a selection or a per-model fetch reaches, never part of a group download.
+        alternatives = [entry for entry in config["flux2"]["files"] if entry.get("optional")]
+        self.assertEqual(sorted(entry["name"] for entry in alternatives),
+                         ["flux-2-klein-4b-fp8.safetensors", "qwen_3_4b_fp4_flux2.safetensors"])
+        for entry in alternatives:
+            self.assertTrue(entry["no_auto_download"])
+            self.assertTrue(1 <= entry["rating"] <= 5)
         # Every downloadable artifact is pinned to a verified revision (immutable
         # commit sha) and an exact size, so the resolve URL cannot drift and a
         # truncated download is detectable.  A hash may only appear when it was

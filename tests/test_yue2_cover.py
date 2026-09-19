@@ -104,6 +104,45 @@ class CoverTests(unittest.TestCase):
         self.assertIn(str(path), joined)
         self.assertIn('lyrics=new lyrics', joined)
 
+    def test_a_damaged_source_is_refused_before_a_graph_is_built(self):
+        """The reported failure: a source file the decoder cannot read end to end.
+
+        ComfyUI's own ``LoadAudio`` would fail a moment later, deep inside ComfyUI and
+        without naming the file, so the transcription node asks first. No GraphBuilder
+        is provided here on purpose: reaching it would mean the run got too far.
+        """
+        with tempfile.TemporaryDirectory() as folder:
+            broken = Path(folder) / 'not really audio.mp3'
+            broken.write_text('<!DOCTYPE html><html>a saved web page</html>', encoding='utf-8')
+            host = types.SimpleNamespace(get_annotated_filepath=lambda _: str(broken))
+            with patch.dict(sys.modules, {'folder_paths': host}):
+                with self.assertRaises(ValueError) as caught:
+                    self.node('MusicCoverTranscription').transcribe(
+                        self.profile(), self.source(audio=broken.name))
+        message = str(caught.exception)
+        self.assertIn(broken.name, message, 'the message has to name the file')
+        self.assertIn('cannot be decoded at all', message)
+
+    def test_a_healthy_source_passes_the_probe(self):
+        import soundfile as sf
+        with tempfile.TemporaryDirectory() as folder:
+            tone = Path(folder) / 'tone.wav'
+            sf.write(str(tone), [0.0] * 4410, 44100)
+            self.mod.probe_source_audio(tone)  # must not raise
+
+    def test_the_probe_reports_how_far_a_file_decoded(self):
+        """A file that plays for a while and then breaks names the point it broke."""
+        with patch.object(self.mod, '_decode_whole_file',
+                          return_value=(162.7, 'InvalidDataError: boom', True)):
+            with self.assertRaises(ValueError) as caught:
+                self.mod.probe_source_audio(Path('circles.mp3'))
+        self.assertIn('cannot be decoded past 2:42', str(caught.exception))
+        self.assertIn('circles.mp3', str(caught.exception))
+
+    def test_without_any_decoder_the_probe_does_not_invent_a_failure(self):
+        with patch.object(self.mod, '_decode_whole_file', return_value=(None, None, False)):
+            self.mod.probe_source_audio(Path('whatever.mp3'))  # must not raise
+
     def test_transcription_and_generation_use_same_abc_and_mode(self):
         for mode in ['melody', 'full']:
             with patch.dict(sys.modules, {'comfy_execution.graph_utils': self.graph_module()}):

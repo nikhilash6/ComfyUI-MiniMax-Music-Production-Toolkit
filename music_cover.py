@@ -158,6 +158,65 @@ def resolve_source_path(audio) -> "Path | None":
         return None
 
 
+def _decode_whole_file(path: Path) -> "tuple[float | None, str | None, bool]":
+    """Decode ``path`` end to end.
+
+    Returns ``(seconds, error, proved)``: ``error`` is set when a decoder refused the
+    file, and ``proved`` says whether that answer came from PyAV - the library
+    ComfyUI's own ``LoadAudio`` uses. Without PyAV the toolkit's reader is asked
+    instead; it notices a file that is not audio at all, but it silently resyncs over a
+    broken frame, so a pass from it is not evidence and never reported as one.
+    """
+    try:
+        import av  # type: ignore
+    except ImportError:
+        av = None
+    if av is not None:
+        seconds = 0.0
+        try:
+            with av.open(str(path)) as container:
+                stream = container.streams.audio[0]
+                for frame in container.decode(stream):
+                    seconds += frame.samples / float(frame.sample_rate or 1)
+        except Exception as exc:  # any decoder error means the same thing here
+            return seconds, f"{type(exc).__name__}: {exc}", True
+        return seconds, None, True
+    try:
+        import soundfile as sf
+    except ImportError:
+        return None, None, False
+    try:
+        data, rate = sf.read(str(path), dtype="float32", always_2d=True)
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}", False
+    return (len(data) / float(rate)) if rate else None, None, False
+
+
+def probe_source_audio(path: Path) -> None:
+    """Refuse a damaged source *before* a graph is built around it.
+
+    ``LoadAudio`` is a ComfyUI core node, so a source its decoder cannot read turns
+    into a traceback from inside ComfyUI with the file name nowhere in it: a 2.6 MB MP3
+    that plays for 2:42 and then hits a broken frame looked exactly like that. Decoding
+    the whole file once costs a fraction of a second (about 0.2 s for a normal song)
+    and turns it into a sentence that names the file and how far it got.
+
+    The strength of the check follows the decoder behind it, so the log line only
+    claims a full decode when PyAV proved it - see :func:`_decode_whole_file`.
+    """
+    seconds, error, proved = _decode_whole_file(path)
+    if error is None:
+        if seconds is not None and proved:
+            LOGGER.debug("Cover source decoded end to end: %s (%.1f s)", path.name, seconds)
+        return
+    where = "at all" if not seconds else f"past {int(seconds // 60)}:{int(seconds % 60):02d}"
+    raise ValueError(
+        f"YuE2 Cover: the source audio '{path.name}' cannot be decoded {where} ({error}). "
+        "Re-export or re-download the file and select it again - a cover cannot be made "
+        "from a file the audio decoder gives up on."
+    )
+
+
 def source_basename(filename):
     # ComfyUI can append a storage annotation to an input selection.
     name = re.sub(r"\s+\[(?:input|output|temp)\]$", "", str(filename).strip())
@@ -294,6 +353,11 @@ class MusicCoverTranscription:
         if profile is None or not profile.is_cover:
             return ("",)
         source = cover_source(cover_source_json)
+        # The graph hands the file to ComfyUI's LoadAudio; a damaged file would fail
+        # there, deep inside ComfyUI and without naming itself.
+        source_path = resolve_source_path(source["audio"])
+        if source_path is not None:
+            probe_source_audio(source_path)
         from comfy_execution.graph_utils import GraphBuilder
         graph = GraphBuilder()
         audio = graph.node("LoadAudio", audio=source["audio"])

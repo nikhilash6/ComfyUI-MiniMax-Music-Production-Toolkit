@@ -42,6 +42,7 @@ from .model_downloader import (
     config_version_problem,
     load_models_config,
     normalize_model_entries,
+    resolve_entry_url,
     resolve_target,
 )
 from .toolkit_logging import get_logger
@@ -423,7 +424,14 @@ def list_llm_models() -> List[str]:
                 names.append(path.name)
     grouped = group_gguf_files(names)
     offered = set(grouped["models"]) | {entry["name"] for entry in grouped["split_models"]}
-    return [name for name in names if name in offered]
+    installed = [name for name in names if name in offered]
+    # Catalog models that are not on disk yet are offered as well, after the installed
+    # ones: without them the dropdown only lists files a user already has, so a model the
+    # toolkit knows how to fetch could never be selected - which is exactly how "download
+    # it yourself" became the only way in. The first use of a selected model downloads it.
+    catalog = [entry.get("name") for entry in load_models_config().get("llm", {}).get("files", [])
+               if entry.get("name") and entry.get("name") not in seen]
+    return installed + catalog
 
 
 _ENVIRONMENT_LOGGED = False
@@ -553,9 +561,11 @@ def _configured_llm_entry(name: str) -> Optional[Dict[str, Any]]:
     llm = config.get("llm", {})
     for entry in llm.get("files", []):
         if entry.get("name") == name:
-            return entry
+            # The catalog marks these as "never fetched by the model check". Here the model
+            # *was* chosen, so this is the place where it is fetched.
+            return {**entry, "no_auto_download": False}
     example = llm.get("example", {})
-    if example.get("name") == name and example.get("url"):
+    if example.get("name") == name and resolve_entry_url(example):
         return example
     return None
 
@@ -748,14 +758,19 @@ def _get_model(
 
     if model_path is None:
         entry = _configured_llm_entry(model_name)
-        if entry and entry.get("url") and auto_download:
+        # The URL is derived, not stored: a catalog entry names a repository, a pinned
+        # revision and a remote filename, and only ``resolve_entry_url`` knows the rule.
+        # Reading ``entry["url"]`` here was how a model the catalog *could* fetch stayed
+        # a manual download.
+        url = resolve_entry_url(entry) if entry else ""
+        if url and auto_download:
             report = check_file_entries([entry], base_path=None, auto_download=True)
             failed = [item for item in report if item["status"] == "failed"]
             if failed:
                 raise RuntimeError("LLM model download failed: " + "; ".join(i["message"] for i in failed))
             model_path = _find_model_path(model_name)
         if model_path is None:
-            if entry and entry.get("url") and not auto_download:
+            if url and not auto_download:
                 raise RuntimeError(
                     f"LLM model '{model_name}' is missing and auto-download is disabled. "
                     "Enable auto_download or place the GGUF in models/llm."
@@ -978,16 +993,23 @@ def _run_chat(
 
 
 def _run_chat_streamed(model, kwargs: dict, max_tokens: int) -> tuple:
-    """Run one chat turn with token streaming (progress bar in node and log).
+    """Run one chat turn with token streaming.
 
-    Streaming makes the generation visible: the node's progress bar advances
-    with every generated token (content + reasoning) up to ``max_tokens``,
-    and the log shows a single ASCII progress bar (0 on the left, max_tokens
-    on the right) that updates every ~10% instead of one log line per step.
-    The collected text is split exactly like the non-streaming path, so
-    behaviour is identical otherwise.
+    The console gets the same bar ComfyUI's own samplers draw (via ``tqdm``, like YuE2):
+    one line that updates in place with the count, the elapsed time, the remaining time and
+    the rate - ``LLM streaming:  8%|...| 1958/24576 [01:15<14:24, 26.1token/s]`` - instead of
+    a log line every few percent.
+
+    The unit is ``token`` because this path runs llama.cpp locally and that backend yields
+    **one stream piece per decoded token** (it detokenises token by token). The closing
+    summary repeats the count, and when the backend sends its own usage block that count is
+    reported as the authoritative one. The collected text is split exactly like the
+    non-streaming path, so behaviour is identical otherwise.
     """
-    from .progress_utils import format_progress_bar, make_progress_bar
+    import time
+
+    from .progress_utils import (RATE_MIN_SECONDS, format_duration, format_rate,
+                                 make_progress_bar, track)
 
     kwargs = dict(kwargs)
     kwargs.pop("cache_prompt", None)  # prompt caching and streaming are not combined
@@ -998,8 +1020,9 @@ def _run_chat_streamed(model, kwargs: dict, max_tokens: int) -> tuple:
     reasoning_parts: List[str] = []
     total_tokens = 0
     usage_payload = None
-    log_every = max(64, max_tokens // 10)
+    started = time.monotonic()
     pbar = make_progress_bar(max_tokens)
+    bar = track(max_tokens, desc="LLM streaming", unit="token")
     try:
         for chunk in stream:
             if _processing_interrupted():
@@ -1022,25 +1045,34 @@ def _run_chat_streamed(model, kwargs: dict, max_tokens: int) -> tuple:
                 reasoning_parts.append(reasoning)
             total_tokens += 1
             pbar.update_absolute(min(total_tokens, max_tokens))
-            if total_tokens % log_every == 0 or total_tokens >= max_tokens:
-                LOGGER.info("LLM progress %s", format_progress_bar(total_tokens, max_tokens))
+            bar.update(1)
     finally:
-        # The native generator is closed on every path - completion, error and
-        # cancellation - so a request is never left open in llama.cpp.
+        # The bar is closed on every path, so a cancel or an error does not leave a
+        # half-drawn line behind; the native generator is closed for the same reason.
+        bar.close()
         _close_stream(stream)
-    LOGGER.info("LLM progress %s", format_progress_bar(total_tokens, max_tokens))
-    # A streaming chunk is not guaranteed to be one token, so report the chunk
-    # count together with the token budget instead of claiming exact tokens.
+    elapsed = max(0.0, time.monotonic() - started)
+    rate = format_rate(total_tokens, elapsed, "token")
     LOGGER.info(
-        "LLM streaming finished: %d stream chunk(s) (token budget %d).", total_tokens, max_tokens
+        "LLM streaming finished: %d token(s) in %s%s (token budget %d).",
+        total_tokens, format_duration(elapsed), f", {rate}" if rate else "", max_tokens,
     )
+    usage = _usage_from_response(usage_payload, chunks=total_tokens)
+    completion_tokens = usage.get("completion_tokens")
+    if completion_tokens and elapsed >= RATE_MIN_SECONDS:
+        # The backend counted these itself, so a token rate may be computed from them - and
+        # only over a span long enough for an average to mean something.
+        LOGGER.info(
+            "LLM token rate: %.1f tok/s (%d completion tokens in %s, counted by the backend).",
+            completion_tokens / elapsed, int(completion_tokens), format_duration(elapsed),
+        )
     reasoning = "".join(reasoning_parts).strip()
     text = "".join(text_parts).strip()
     text, tag_thinking = _split_thinking_tags(text)
     thinking = (reasoning + "\n" + tag_thinking).strip() if reasoning or tag_thinking else ""
     if not text:
         raise RuntimeError(_empty_answer_message(thinking))
-    return text, thinking, _usage_from_response(usage_payload, chunks=total_tokens)
+    return text, thinking, usage
 
 
 def unload_llm_models() -> int:
@@ -1137,6 +1169,16 @@ class MiniMaxLLMChat:
                 "credential_id": ("STRING", {"default": "", "tooltip": "Internal reference to a session key entered via Set API key. Contains no provider secret. Expires when ComfyUI restarts."}),
                 "remote_max_tokens": ("INT", {"default": 4096, "min": 1, "max": 131072, "tooltip": "Output token budget, including reasoning where the provider counts it. Increase if output is truncated; model-specific limits apply."}),
                 "request_timeout": ("INT", {"default": 120, "min": 5, "max": 600, "tooltip": "Network timeout in seconds. Slow local models may need more time. Failed requests are never retried automatically."}),
+                # Appended last so a saved workflow's positional widget values stay valid:
+                # a widget inserted anywhere else would shift every value behind it. It sits
+                # with the other connection fields because it only decides what happens to
+                # the key of this connection, never the request itself.
+                "permanent_key": ("BOOLEAN", {"default": False, "tooltip": "Off: the key entered with Set API key lives in ComfyUI's memory for this session only, so a restart asks for it again. On: it is additionally stored on this computer, bound to this exact API address, and reused after a restart. Clear session key deletes the stored key as well. The key never enters the workflow either way."}),
+                # Appended last on purpose: ComfyUI maps a saved workflow's slot indexes
+                # positionally, so a new input anywhere else would shift every input
+                # behind it. forceInput means no widget - the node's widget list, and
+                # with it every stored widget value, stays exactly as it was.
+                "llm_config_json": ("STRING", {"forceInput": True, "tooltip": "Optional: connect LLM settings · central. Its values win over this node's own widgets field by field; per-call settings (enabled, prompts, session reset) stay here."}),
             },
         }
 
@@ -1152,9 +1194,26 @@ class MiniMaxLLMChat:
         return float("nan") if enabled else "disabled"
 
     @classmethod
-    def VALIDATE_INPUTS(cls, model=None, backend=MODES[0], enabled=True):
+    def VALIDATE_INPUTS(cls, model=None, backend=MODES[0], enabled=True, llm_config_json=None):
         # A remembered GGUF filename may not exist on a machine using a server.
         # Validate only these named fields; Comfy keeps validating the others.
+        #
+        # ``llm_config_json`` is part of the signature in order to *see* the socket, and a
+        # linked input never arrives as its text: ComfyUI marks a link as missing while it
+        # validates (the upstream node has not run yet), so the placeholder ``(None,)``
+        # arrives instead - checked against ``execution.get_input_data`` and a stub node on
+        # a real install. A connection therefore means the settings node decides the model,
+        # and a leftover name in this node's own dropdown - a file that was deleted, or a
+        # workflow from another machine - must not refuse the run before the payload was ever
+        # read. A payload handed in as text (an API caller) is read instead, so the values
+        # that will actually be used are the ones checked.
+        if isinstance(llm_config_json, (tuple, list)):
+            return True
+        if isinstance(llm_config_json, str) and llm_config_json.strip():
+            from .llm_config import resolve
+
+            effective = resolve(llm_config_json, {"model": model, "backend": backend})
+            model, backend = effective.get("model"), effective.get("backend")
         if backend not in MODES:
             return "Select a supported LLM backend."
         if not isinstance(enabled, bool):
@@ -1165,7 +1224,37 @@ class MiniMaxLLMChat:
             return "Select an available GGUF model, or choose Local app / server or Cloud service."
         return True
 
-    def chat(
+    def chat(self, enabled, user_text, system_prompt, session_id="", *args, llm_config_json="", **settings):
+        """Resolve where the settings come from, then run the call.
+
+        A connected *LLM settings · central* node wins over this node's own widgets,
+        field by field; everything it does not carry stays as configured here. The
+        resolved values are handed to :meth:`_chat`, which is the call itself and does
+        not care where a setting came from.
+
+        ``*args`` keeps the historical positional order working for direct Python
+        callers: anything passed positionally is not also sent by name.
+        """
+        from .llm_config import resolve
+
+        effective = resolve(llm_config_json, settings)
+        if args:
+            import inspect
+
+            fields = [name for name in inspect.signature(self._chat).parameters
+                      if name not in {"self", "enabled", "user_text", "system_prompt", "session_id"}]
+            for name in fields[:len(args)]:
+                effective.pop(name, None)
+        if llm_config_json:
+            which = "central LLM settings node, overriding this node's widgets" \
+                if effective else "this node's widgets"
+            LOGGER.info(
+                "LLM call settings from %s: backend=%s, model=%s, context=%s.",
+                which, effective.get("backend"), effective.get("model"), effective.get("n_ctx"),
+            )
+        return self._chat(enabled, user_text, system_prompt, session_id, *args, **effective)
+
+    def _chat(
         self,
         enabled,
         user_text,
@@ -1200,6 +1289,7 @@ class MiniMaxLLMChat:
         credential_id="",
         remote_max_tokens=4096,
         request_timeout=120,
+        permanent_key=False,
     ):
         if not enabled:
             status = "LLM disabled (enabled=False): returning empty text; the parser can fall back to its manual fields."
@@ -1217,7 +1307,7 @@ class MiniMaxLLMChat:
                 local_provider=local_provider, cloud_provider=cloud_provider,
                 server_url=server_url, remote_model=remote_model, api_key_env=api_key_env,
                 credential_id=credential_id, remote_max_tokens=remote_max_tokens,
-                request_timeout=request_timeout,
+                request_timeout=request_timeout, permanent_key=permanent_key,
             )
             if _processing_interrupted():
                 raise _interrupt_exception()

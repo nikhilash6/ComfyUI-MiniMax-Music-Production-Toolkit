@@ -21,6 +21,10 @@ SDK. They send the assembled user prompt and system prompt as a fresh,
 single-turn request. Audio and image files are not sent by this LLM node.
 The song parser, MiniMax music generation and mastering continue as before.
 
+A run makes up to three LLM calls, and all of them can share one set of these
+settings: **LLM settings · central**, described under [one place for every
+call](#one-place-for-every-call).
+
 ## Quick setup: another local app
 
 1. Open the app, download/load a **text chat or instruct model**, and start its
@@ -102,14 +106,70 @@ API references: [OpenAI](https://developers.openai.com/api/docs/guides/text),
 [OpenRouter](https://openrouter.ai/docs/api-reference/overview),
 [Groq](https://console.groq.com/docs/openai).
 
+## One place for every call
+
+A run can make three LLM calls - the song request, the Cover Studio plan and the
+Cover Studio transformation - and each **MiniMax LLM Chat** node used to carry its
+own copy of the same ~28 settings. **LLM settings · central** holds them once and
+sends them as JSON on its single `llm_config_json` output.
+
+Connect that output to the `llm_config_json` input of every chat node. The
+central values then win **field by field**: a setting the payload carries
+replaces the chat node's own, and a setting it does not carry keeps the value
+configured on the receiving node. The connection is optional everywhere, so an
+older workflow and a chat node used on its own behave exactly as before, and a
+partially configured central node never blanks a setting somewhere else. An
+empty socket or a payload from an older release that cannot be read is ignored
+with a log line instead of stopping the run. Per-call settings stay on the chat
+node: `enabled` (skip this call), `user_text`, `system_prompt` and
+`reset_session`. The node's page in the help panel lists every field it holds.
+
+Three points worth knowing before you connect it:
+
+- **One provider, one model.** The startup line names the source of each call's
+  settings, so a graph that quietly used two models says so in the log instead.
+- **Changing a model means changing it once.** The dropdown on the central node
+  is the same list as on the chat node.
+- **Different backends per call are still possible.** Leave the node unwired or
+  bypass it, and each chat node uses its own widgets again.
+
+### Where the GGUF models come from
+
+The **Model** dropdown offers the GGUFs in `ComfyUI/models/llm` **and** the
+candidates listed in `models_config.json`, which the toolkit verified against
+their repository revision (file name, repository, commit, byte size). A model
+that is not on disk yet can therefore be selected; the first run that uses it
+downloads it into `ComfyUI/models/llm/` while `auto_download` is on (the
+default). The download is resumable and verifies the expected size before the
+file counts as installed.
+
+These candidates are several gigabytes each, and a run needs at most one of
+them, so the model check (**MiniMaxModelAutodownload**) only reports them and
+never starts that download - the bundled workflows keep `llm_model=false` for
+that reason. Any other llama.cpp-compatible GGUF you place in
+`ComfyUI/models/llm/` is offered in the dropdown as well, and is never moved or
+renamed. Which size suits which card is listed in
+[INSTALLATION.md](../INSTALLATION.md#5-local-llm).
+
 ## Keys, sharing and saved workflows
 
 **Set API key** uses a password field. The provider key is kept in ComfyUI server
-memory, bound to the exact API base. It is not written to a file, browser storage,
-workflow JSON or production record. A workflow contains only an opaque reference
-to that connection. Restarting ComfyUI expires it: enter the key again, or click
-**Clear session key** to use an environment variable. Changing an address also
-requires a new bound key or clearing the old reference.
+memory, bound to the exact API base. It is not written to browser storage, workflow
+JSON or production record. A workflow contains only an opaque reference to that
+connection. Restarting ComfyUI expires it: enter the key again, click **Clear session
+key** to use an environment variable, or turn on **Keep API key after restart** below.
+Changing an address also requires a new bound key or clearing the old reference.
+
+**Keep API key after restart** is off by default and decides only *where* that key is
+kept. With it on, the key is stored beside your ComfyUI user directory in
+`minimax_music_toolkit/llm_api_keys.json` — again bound to the exact API address — and
+is reused after a restart instead of being asked for again. On Linux and macOS the file
+is created with `0600`; on Windows it relies on your user profile's permissions, so
+treat it like any other file of yours that holds a secret. The switch, not the file, is
+the authority: turning it off stops a stored key from being used. **Clear session key**
+deletes the stored key for that address as well, and deleting the file removes every
+stored key at once. The key still never reaches the workflow, the browser or the
+production record.
 
 Only use this key facility on a trusted ComfyUI server: it is not a separate
 multi-user credential vault. Someone with the workflow reference and access to
@@ -202,7 +262,7 @@ advanced state cache uses the default session; keep reset on for independent son
 | HTTP 400 | Exact model ID and its maximum output budget. A listed model may not support text generation. |
 | HTTP 429 | Provider quota or rate limit; no automatic retry was sent. |
 | No models listed | Load a model in the app or enter its ID manually. |
-| API key expired | Re-enter it after restarting ComfyUI, or clear the session reference and use an environment variable. |
+| API key expired | Re-enter it after restarting ComfyUI, turn on **Keep API key after restart** so it is stored, or clear the session reference and use an environment variable. |
 | Incomplete / reasoning-only answer | Increase output budget, choose a suitable text model or adjust the prompt. |
 | Old fields still visible | Restart ComfyUI and hard-refresh the browser to reload the extension. |
 
@@ -210,7 +270,8 @@ advanced state cache uses the default session; keep reset on for independent son
 
 Automated tests cover request bodies for every preset, native authentication,
 response parsing, malformed/refused/truncated responses, exact-address key
-binding, redirect rejection, loopback HTTP generation/model discovery, UI
+binding, the optional stored key and its removal, redirect rejection, loopback HTTP
+generation/model discovery, UI
 visibility/serialization and the cover switch's graph connections. Live account
 access, model availability and output quality must also be checked with your
 chosen app/provider; automated tests do not spend cloud credit.

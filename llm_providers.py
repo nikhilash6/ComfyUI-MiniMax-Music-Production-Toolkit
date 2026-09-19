@@ -2,6 +2,10 @@
 
 Provider defaults are intentionally conservative: sampling/reasoning remain
 server-owned. A failed generation is never retried (it may already be billed).
+
+Keys entered in the UI live in this process only, unless the user turns on "Keep API
+key after restart" for the connection; that optional store is the single file this
+module touches, and it is read lazily, never at import time.
 """
 from __future__ import annotations
 
@@ -12,6 +16,7 @@ import secrets
 import socket
 import threading
 import time
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -38,8 +43,16 @@ CLOUD = {
     "Other OpenAI-compatible cloud": ("", "chat", ""),
 }
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
-_KEYS = {}  # opaque handle -> (API base, secret); never written to disk
+_KEYS = {}  # opaque handle -> (API base, secret); this process only
 _KEY_LOCK = threading.Lock()
+
+#: Optional on-disk store behind "Keep API key after restart". Off by default: a key
+#: lands here only when the user asks for it on the LLM node. Entries are keyed by the
+#: exact API base - never by a provider label - so an overridden address cannot
+#: inherit another connection's secret.
+SAVED_KEYS_FILE = "llm_api_keys.json"
+_SAVED_KEYS_VERSION = 1
+_SAVED = {}  # store path -> {API base: secret}, mirroring the file
 
 
 def connection(backend, local_provider="LM Studio", cloud_provider="OpenAI", server_url=""):
@@ -78,8 +91,101 @@ def _validate_key(key):
     return key
 
 
-def remember_key(base, key, previous=""):
-    """Bind a browser-entered key to an exact API base, not a provider label."""
+def _saved_store_path():
+    """The file behind "Keep API key after restart".
+
+    ComfyUI's user directory is the natural place: it survives restarts, belongs to the
+    person running ComfyUI and is not part of any workflow. ``folder_paths`` is imported
+    inside the call so this module stays importable - and testable - without a host.
+    """
+    directory = None
+    try:
+        import folder_paths  # type: ignore
+
+        getter = getattr(folder_paths, "get_user_directory", None)
+        base = getattr(folder_paths, "base_path", None)
+        directory = Path(getter()) if callable(getter) else (Path(base) / "user" if base else None)
+    except Exception:
+        directory = None
+    if directory is None:
+        # No host (a plain Python run, or a very old ComfyUI): keep it in the user's home.
+        directory = Path(os.path.expanduser("~")) / ".comfyui"
+    return Path(directory) / "minimax_music_toolkit" / SAVED_KEYS_FILE
+
+
+def _read_saved(path):
+    """Read the store. A missing or unreadable file is simply empty, never fatal."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    entries = data.get("keys") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    return {base: secret for base, secret in entries.items()
+            if isinstance(base, str) and isinstance(secret, str) and base and secret}
+
+
+def saved_keys():
+    """Every stored key of this installation, read from disk once per store path."""
+    path = _saved_store_path()
+    with _KEY_LOCK:
+        if path not in _SAVED:
+            _SAVED[path] = _read_saved(path)
+        return dict(_SAVED[path])
+
+
+def saved_key(base):
+    """The stored key for one exact API base, or an empty string."""
+    return saved_keys().get(base, "")
+
+
+def _write_saved(path, keys):
+    """Replace the store, or fail loudly: a key that only looks saved is worse."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.parent / (path.name + ".tmp")
+        # 0600 where the platform honors it. On Windows the profile's ACL is what
+        # protects the file; the mode argument is accepted but has no effect there.
+        descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump({"version": _SAVED_KEYS_VERSION, "keys": keys}, handle,
+                      ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temp, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    except OSError as exc:
+        raise ValueError(
+            f"Could not save the API key on this computer ({exc.strerror or exc}). "
+            "Turn 'Keep API key after restart' off to use it for this session only."
+        ) from None
+    with _KEY_LOCK:
+        _SAVED[path] = dict(keys)
+
+
+def forget_saved_key(base):
+    """Drop the stored key for one address. Returns whether something was removed."""
+    if not base:
+        return False
+    keys = saved_keys()
+    if base not in keys:
+        return False
+    del keys[base]
+    _write_saved(_saved_store_path(), keys)
+    return True
+
+
+def remember_key(base, key, previous="", permanent=False):
+    """Bind a browser-entered key to an exact API base, not a provider label.
+
+    ``permanent`` also stores the key so it survives a ComfyUI restart. Without it the
+    key stays in this process only, and a key already stored for the same address is
+    left alone - it is simply not used until the switch is on again.
+    """
     key = _validate_key(key)
     with _KEY_LOCK:
         if previous in _KEYS and _KEYS[previous][0] == base:
@@ -88,6 +194,10 @@ def remember_key(base, key, previous=""):
             raise ValueError("Too many stored connections. Restart ComfyUI to clear session keys.")
         handle = secrets.token_urlsafe(32)
         _KEYS[handle] = (base, key)
+    if permanent:
+        keys = saved_keys()
+        keys[base] = key
+        _write_saved(_saved_store_path(), keys)
     return handle
 
 
@@ -96,13 +206,25 @@ def forget_key(handle):
         _KEYS.pop(handle, None)
 
 
-def credential(base, default_env, api_key_env="", credential_id="", required=False):
+def credential(base, default_env, api_key_env="", credential_id="", required=False, permanent=False):
+    """Resolve the key for one address: session entry first, then the stored one.
+
+    ``permanent`` is the node's switch, not a stored fact: with it off a key that is
+    still on disk is deliberately not used, so turning the switch off takes effect.
+    """
     if credential_id:
         with _KEY_LOCK:
             stored = _KEYS.get(credential_id)
-        if not stored or stored[0] != base:
-            raise ValueError("API key expired or server address changed. Use Set API key again, or Clear session key to use an environment variable.")
-        return stored[1]
+        if stored and stored[0] == base:
+            return stored[1]
+    if permanent:
+        saved = saved_key(base)
+        if saved:
+            return saved
+    if credential_id:
+        # A handle that no longer resolves (typically: ComfyUI was restarted) and no
+        # stored key to fall back on. Keep the original, actionable error.
+        raise ValueError("API key expired or server address changed. Use Set API key again, or Clear session key to use an environment variable.")
     env = (api_key_env or default_env).strip()
     if env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env):
         raise ValueError("API key environment variable must be a variable NAME, not the key itself.")
@@ -198,7 +320,8 @@ def parse_response(result, protocol):
 
 def remote_chat(*, backend, user_text, system_prompt, local_provider="LM Studio",
                 cloud_provider="OpenAI", server_url="", remote_model="", api_key_env="",
-                credential_id="", remote_max_tokens=4096, request_timeout=120):
+                credential_id="", remote_max_tokens=4096, request_timeout=120,
+                permanent_key=False):
     provider, base, protocol, env = connection(backend, local_provider, cloud_provider, server_url)
     model = remote_model.strip()
     if not model or len(model) > 512:
@@ -206,7 +329,7 @@ def remote_chat(*, backend, user_text, system_prompt, local_provider="LM Studio"
     limit = int(remote_max_tokens)
     if not 1 <= limit <= 131072:
         raise ValueError("Output token limit must be between 1 and 131072.")
-    key = credential(base, env, api_key_env, credential_id, backend == MODES[2])
+    key = credential(base, env, api_key_env, credential_id, backend == MODES[2], permanent_key)
     payload = {"model": model}
     if protocol == "responses":
         endpoint = "/responses"
@@ -230,7 +353,8 @@ def remote_chat(*, backend, user_text, system_prompt, local_provider="LM Studio"
 
 def list_remote_models(**options):
     provider, base, protocol, env = connection(options["backend"], options.get("local_provider", "LM Studio"), options.get("cloud_provider", "OpenAI"), options.get("server_url", ""))
-    key = credential(base, env, options.get("api_key_env", ""), options.get("credential_id", ""), options["backend"] == MODES[2])
+    key = credential(base, env, options.get("api_key_env", ""), options.get("credential_id", ""),
+                     options["backend"] == MODES[2], options.get("permanent_key", False))
     result = request_json(base + "/models", key, protocol, timeout=15)
     items = result.get("data")
     if not isinstance(items, list):

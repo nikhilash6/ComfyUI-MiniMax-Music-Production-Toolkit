@@ -27,6 +27,12 @@ def _predictions(spans, channels=2, seed=0):
     return out
 
 
+def ready_weights(directory):
+    """The availability probe the node uses: installed, no download needed."""
+    return {"ready": True, "directory": str(directory), "missing": [], "failed": [],
+            "reason": "weights are installed (test)"}
+
+
 class AccumulatorParityTests(unittest.TestCase):
     def test_streaming_matches_the_list_stitch_bit_exactly(self):
         for hop in (flashsr.CHUNK_SAMPLES // 2, flashsr.CHUNK_SAMPLES - 1, flashsr.CHUNK_SAMPLES):
@@ -87,9 +93,9 @@ class UpscaleStreamingTests(unittest.TestCase):
 
         runner = self.FakeRunner()
         saved_runner = flashsr._get_runner
-        saved_weights = flashsr._ensure_flashsr_weights
+        saved_weights = flashsr.flashsr_weights_status
         flashsr._get_runner = lambda _dir: {"model": runner, "device": "cpu"}
-        flashsr._ensure_flashsr_weights = lambda _auto: flashsr.VENDOR_ROOT
+        flashsr.flashsr_weights_status = lambda auto_download=False: ready_weights(flashsr.VENDOR_ROOT)
         try:
             audio = {
                 "waveform": torch.zeros((1, 2, total_samples), dtype=torch.float32),
@@ -103,7 +109,7 @@ class UpscaleStreamingTests(unittest.TestCase):
             )
         finally:
             flashsr._get_runner = saved_runner
-            flashsr._ensure_flashsr_weights = saved_weights
+            flashsr.flashsr_weights_status = saved_weights
         return out, settings, runner, audio["waveform"]
 
     def test_streamed_output_matches_the_reference_stitch(self):
@@ -153,9 +159,9 @@ class UpscaleStreamingTests(unittest.TestCase):
                 raise RuntimeError("kernel exploded")
 
         saved_runner = flashsr._get_runner
-        saved_weights = flashsr._ensure_flashsr_weights
+        saved_weights = flashsr.flashsr_weights_status
         flashsr._get_runner = lambda _dir: {"model": Boom(), "device": "cpu"}
-        flashsr._ensure_flashsr_weights = lambda _auto: flashsr.VENDOR_ROOT
+        flashsr.flashsr_weights_status = lambda auto_download=False: ready_weights(flashsr.VENDOR_ROOT)
         try:
             import torch
 
@@ -169,7 +175,7 @@ class UpscaleStreamingTests(unittest.TestCase):
                 )
         finally:
             flashsr._get_runner = saved_runner
-            flashsr._ensure_flashsr_weights = saved_weights
+            flashsr.flashsr_weights_status = saved_weights
         self.assertIn("chunk 1/1", str(ctx.exception))
         self.assertIn("kernel exploded", str(ctx.exception))
 

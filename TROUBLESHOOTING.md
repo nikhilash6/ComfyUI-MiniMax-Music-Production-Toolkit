@@ -224,6 +224,34 @@ the message names only the transport, never the owner, so the exact connection c
 be identified from the log alone. Leave the tab open while a long prompt runs, and
 judge the run by its finished files.
 
+## A cover run dies with `InvalidDataError` or `Header missing`
+
+The traceback comes from ComfyUI's own `LoadAudio` node (`comfy_extras/nodes_audio.py`),
+not from the toolkit, and it names no file:
+
+```text
+av.error.InvalidDataError: [Errno 1094995529] Invalid data found when processing input:
+'avcodec_send_packet()'; last error log: [mp3float] Header missing
+```
+
+**The source audio file is damaged.** Typically it decodes fine for a while and then
+hits a broken frame - a truncated download, an interrupted copy or a file whose tail
+never arrived. A file that plays to the end in one player can still do this in another
+one; the toolkit hit a 2.6 MB MP3 that decoded its first 2:42 and then died.
+
+Since 3.1.1 the cover transcription node decodes the source once before the run builds
+its graph, so you get a sentence instead:
+
+```text
+YuE2 Cover: the source audio 'x.mp3' cannot be decoded past 2:42 (InvalidDataError: ...).
+Re-export or re-download the file and select it again - a cover cannot be made from a
+file the audio decoder gives up on.
+```
+
+What to do: re-download or re-export the file, check its full playtime in a player, and
+select it again. If it decodes there but is refused here, the file is damaged somewhere
+your player skips over - re-encode it from a good copy.
+
 ## Long batch fails with CUDA graph / allocator errors
 
 This is normally a ComfyUI/PyTorch/CUDA/model interaction rather than the prompt toolkit itself. Restart ComfyUI after a CUDA capture failure. If the error specifically mentions `CUDAMallocAsyncAllocator` / stream capture invalidation, testing ComfyUI with `--disable-cuda-malloc` can help isolate allocator/capture instability. Expect a possible performance trade-off.

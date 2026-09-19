@@ -99,7 +99,14 @@ class LLMChatTests(unittest.TestCase):
             original = llm_chat._llm_directories
             llm_chat._llm_directories = lambda: [root]
             try:
-                self.assertEqual(llm_chat.list_llm_models(), ["a.gguf"])
+                listed = llm_chat.list_llm_models()
+                self.assertEqual(listed[0], "a.gguf", "installed models stay first")
+                self.assertEqual(listed.count("a.gguf"), 1, "nothing is offered twice")
+                # The catalog's models are offered as well: without that, a model the
+                # toolkit knows how to fetch could never be selected in the first place.
+                catalog = [entry["name"] for entry in llm_chat.load_models_config()["llm"]["files"]]
+                for name in catalog:
+                    self.assertIn(name, listed)
                 self.assertEqual(llm_chat._find_model_path("a.gguf"), root / "a.gguf")
                 self.assertIsNone(llm_chat._find_model_path("missing.gguf"))
             finally:

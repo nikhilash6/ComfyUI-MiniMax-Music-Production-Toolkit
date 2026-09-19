@@ -22,6 +22,8 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 
+from .llm_config import PER_CALL_FIELDS
+
 # Tooltips shared by fields with the same semantics across nodes.
 GENERIC_INPUT_TOOLTIPS = {
     "cover_source_json": "Source audio identity and shared transcription mode from Cover song / Source audio. Used only for YuE2 Cover; the filename owns the final title.",
@@ -379,6 +381,14 @@ NODE_INPUT_TOOLTIPS = {
         "whisper_models": "Check the Whisper checkpoint for new/original lyrics in YuE2 Cover only. Off excludes it from this check; auto_download controls downloads. Instrumental and other models never request it.",
         "cover_source_json": "Connect Cover song / source audio so this node can see the selected lyrics mode and only request the Whisper weights the run actually uses.",
     },
+}
+
+# The central LLM settings node carries the chat node's fields minus the per-call ones, so
+# its help text is derived from that table instead of copied: new wording for a provider or
+# a model cannot leave this node behind, and a field added there appears here automatically.
+NODE_INPUT_TOOLTIPS["MiniMaxLLMSettings"] = {
+    name: text for name, text in NODE_INPUT_TOOLTIPS["MiniMaxLLMChat"].items()
+    if name not in PER_CALL_FIELDS
 }
 
 NODE_DESCRIPTIONS = {

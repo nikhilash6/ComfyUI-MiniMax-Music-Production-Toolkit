@@ -2,6 +2,152 @@
 
 All notable changes to this project will be documented here. The project follows Semantic Versioning.
 
+## [Unreleased]
+
+## [3.1.2] - 2026-09-19
+
+- **A damaged source file is refused before the run starts, with its name in the
+  message.** ComfyUI's `LoadAudio` is a core node, so a source its decoder cannot read
+  ended the run 1.5 seconds in with an `av.error.InvalidDataError` traceback from
+  inside ComfyUI - and the file name appeared nowhere in it. The reported case was a
+  2.6 MB MP3 that decodes its first 2:42 and then hits a broken frame; FFmpeg's own
+  tools accept it, so nothing warned beforehand. The cover transcription node now
+  decodes the file once before it builds the graph and reports
+  `the source audio 'x.mp3' cannot be decoded past 2:42 (...)`. The check costs about
+  0.2 s for a normal song and uses PyAV when it is importable - the same library
+  `LoadAudio` uses, so it refuses exactly what would have failed. Without PyAV the
+  toolkit's reader still catches a file that is not audio at all, but it silently
+  resyncs over a broken frame, so a pass from it is never reported as proof.
+- **Every LLM call is configured once: `LLM settings · central`.** The example makes
+  three LLM calls - the song request, the Cover Studio plan and the Cover Studio
+  transformation - and each chat node carried its own copy of the same ~28 widgets, so
+  moving to another provider or model meant editing it three times, and a graph whose
+  copies disagreed failed in ways that were hard to see. The new node holds those
+  settings once and hands them out as `llm_config_json`; connect it to a chat node and
+  its values win field by field, so a setting the payload does not carry keeps the
+  receiving node's own value. That is what keeps older graphs working: the connection
+  is optional everywhere, a partially configured central node never blanks a setting
+  somewhere else, and an empty socket or a payload from an older release that cannot be
+  read is ignored with a log line instead of stopping the run. Per-call settings
+  (`enabled`, `user_text`, `system_prompt`, `reset_session`) stay on the chat node. Its
+  widget list is derived from the chat node's `INPUT_TYPES()`, so the two can never
+  offer different models or providers, and the new socket was appended as `forceInput`
+  - no widget is added, so every saved widget value keeps its position. The bundled
+  workflow carries one central node wired to all three calls, holding the settings the
+  chat nodes already used. The chat node also stops letting a leftover model name in its
+  own dropdown refuse the run when the settings node is connected: ComfyUI validates each
+  node's widgets before execution and hands a linked input over as a placeholder (never
+  as the payload), so the connection is treated as the decision - and a payload handed in
+  as text is read and its model is the one checked.
+- **Fixed: a chat model could be listed and still refuse to download itself.** Users
+  reported having to fetch the GGUF by hand, and there were two reasons. The **Model**
+  dropdown only offered files that were already in `models/llm`, so a model the toolkit
+  knew how to fetch could not even be selected; and the loader asked the catalog entry
+  for a `url` field, which the current entries do not have - they name a repository, a
+  pinned commit and a remote filename, and only `resolve_entry_url` knows the rule that
+  turns those into a URL. The check therefore answered "no download URL is configured
+  in models_config.json" for every catalog model. The dropdown now lists the installed
+  files first and the verified candidates after them (nothing twice), and the loader
+  derives the URL the same way the model check does - so the first run with a selected
+  model fetches it (resumable, size-verified, into `models/llm/`) and only then loads
+  it, or names `auto-download is disabled` when the widget is off. The candidates are
+  marked `optional` in the catalog: they are alternatives of which a run needs at most
+  one, so the model check reports them as optional rather than required and never
+  starts a multi-gigabyte download for a model nobody chose (`llm_model` stays `false`
+  in the bundled workflows).
+- **The provider key can be kept across restarts — `Keep API key after restart`.** A key
+  entered with **Set API key** lived in ComfyUI's memory and was gone after a restart, so
+  a cloud or local-server connection had to be entered again every session. The new
+  switch (off by default) stores the key on the machine running ComfyUI, bound to the
+  exact API address rather than to a provider label, so a re-pointed address cannot
+  inherit another connection's secret. The switch, not the file, decides whether a stored
+  key is used, and **Clear session key** deletes the stored key for that address too, so a
+  secret nobody can see cannot outlive the button meant to remove it. The key still never
+  reaches the workflow, the browser or the production record, and a store that cannot be
+  written fails with the path instead of reporting a save that did not happen.
+- **Hardware-aware model choice: a rated catalog, a `Model advisor` node, and the smaller
+  alternatives that actually exist.** The catalog could download many models but said
+  nothing about whether *this* machine should download *this* file, and the variants that
+  make a 4-12 GiB card workable were missing from it. Every catalog entry now carries a
+  **1-5 star rating** for the task it serves (`rating`, with the reason in `rating_note`)
+  and the hardware classes it was intended for (`suits`). The new node **Model advisor ·
+  what suits this machine** reads the detected hardware (CPU cores, RAM, accelerator class)
+  and reports per task which file fits - measured against the *free* budget with a stated
+  margin of `max(2 GiB, 20 %)`, so "weights fit" and "weights plus context fit" are two
+  different answers - plus its rating, and it checks every group as a **combination**: a
+  diffusion model and its text encoder are loaded by the same run, so on a 12 GiB card the
+  full-precision FLUX.2 pair is reported as too large *together with* the fp8/fp4 set that
+  does fit. An unreadable device yields "unknown", never a claim that something fits. The
+  report renders in the node (Markdown), goes to the ComfyUI log and is emitted as JSON;
+  it downloads nothing and changes no setting. New verified candidates (each pinned to a
+  commit whose byte size was read from the repository, all loadable with ComfyUI's core
+  loaders - no new custom node): language models 2B/4B/9B-distill/12B/12B-Mistral plus a
+  plain `llama`-architecture 8B for old `llama.cpp` builds; MiniMax DiT `int8` (2.33 GiB)
+  and the fp32/pruned-bf16 encoders as reference; YuE2 3B `int8` (3.69 GiB); FLUX.2 klein
+  `fp8` diffusion (3.79 GiB) and the `fp4` text encoder (3.58 GiB); Whisper
+  `large-v3-turbo` (1.51 GiB) and `turbo-int8` (0.76 GiB) in their own checkpoint folders.
+- **Fixed: the FlashSR weights pointed at a repository that stopped answering.** Every
+  request to `jakeoneijk/FlashSR_weights` now returns HTTP 401 repo-wide (verified
+  2026-09-19), so a fresh install could not download `student_ldm.pth`, `sr_vocoder.pth` or
+  `vae.pth` at all. The catalog reads the same three files - identical byte sizes, verified
+  with a HEAD request against the resolve URL - from the authors' repository
+  (`laion/FlashSR_One-step_Versatile_Audio_Super-resolution`, remote path `weights/<name>`,
+  local name unchanged because that is what the runtime opens).
+- **A Whisper model is now fetched where it is selected.** The group checkbox downloads the
+  default checkpoint and nothing else - deliberately, so one checkbox cannot pull in two or
+  three checkpoints - which left the smaller turbo variants unreachable. The lyrics node
+  now fetches the folder of the model selected in its dropdown (only the folder the catalog
+  itself would write, with the log line naming what is being fetched), and a checkpoint
+  folder that exists but has no `model.bin` is reported as what it is instead of being
+  handed to `faster_whisper`.
+- **A refinement stage that cannot run now switches itself off instead of ending the run.**
+  FlashSR's three weights are a quality step with a pass-through fallback, yet a missing or
+  unreachable weight file ended the run: the model check raised on a failed download, and the
+  audio node raised when the files were absent - which stopped being theoretical the moment
+  the weight repository began answering HTTP 401. The audio node now probes availability
+  first with a check that never raises and reports *why* (no network, HTTP 401, download
+  switched off), writes one warning line naming the weights directory, and returns its input
+  audio **unchanged**, with `"status": "skipped"` and the reason in its settings JSON so the
+  production record shows it too. The model check treats a failed *FlashSR* download as a
+  warning for the same reason - the stage will skip itself - while a failed song-model
+  download stays fatal. Genuinely broken input still fails loudly: `no valid AUDIO` remains
+  an error, and a half-moved model still reports the move.
+- **The README now says what to expect from a PC.** A per-configuration table (CPU only,
+  6-8, 10-12, 16, 24 and 32+ GiB) lists which music model, language model, Whisper
+  checkpoint and artwork pair fit, what speed to expect per stage, and the star rating of
+  each choice - explicitly as a starting point, not a measurement: the project's own
+  measurement matrix still says *untested*, and the table says so.
+- **The Model advisor is wired into the shipped example** (node 136 in
+  `01 · START / Files & models`, titled *Model advisor · what fits this PC*, `detail` =
+  `summary`). It has no required input, so it can sit anywhere and simply report. It is the
+  only node whose report is about the machine rather than about the song, and it is where the
+  stars and the fit verdict for *this* PC are visible without reading the docs.
+- **The LLM and FlashSR stages draw the same progress bar ComfyUI's own nodes draw.**
+  They had logged a line per chunk resp. per tenth of the token budget, which filled the
+  console with near-identical lines; the first attempt at a fix replaced that with a
+  hand-drawn line that only a terminal could show, so a ComfyUI started from a launcher -
+  where stdout is piped and no terminal exists - showed *no* progress at all. Both stages now
+  use ``tqdm``, exactly like YuE2 does with
+  ``comfy.utils.model_trange(..., desc="YuE2 music sampling", unit="token")``:
+
+  ```text
+  LLM streaming:   8%|#         | 1958/24576 [01:15<14:24, 26.1token/s]
+  FlashSR upscaling: 100%|##########| 39/39 [00:08<00:00,  4.6chunk/s]
+  ```
+
+  One line that updates in place, carrying count, percentage, elapsed time, remaining time
+  and the rate. The LLM's unit is ``token`` because that path drives llama.cpp, which yields
+  one stream piece per decoded token (checked in ``_create_completion``: it iterates the
+  decoded tokens); the backend's own usage block stays the authoritative count and is
+  reported as ``counted by the backend``. The log keeps the start line and one summary per
+  stage (``LLM streaming finished: 190 token(s) in 0:02, 81.1 token/s (token budget 24576).``),
+  so a log file still says what ran and how fast. ``MINIMAX_MUSIC_TOOLKIT_PROGRESS=off``
+  disables the bars; ``progress_utils.track()`` is the single entry point and falls back to a
+  no-op when tqdm is missing (it is line 19 of ComfyUI's own requirements.txt and is declared
+  in the dependency test). ``tests/test_progress_utils.py`` pins the bar's shape, its unit,
+  the switch and the fallback; ``tests/test_progress_lines.py`` pins that the bar advances
+  once per chunk, that the logger stays quiet, and that a cancel still closes the bar.
+
 ## [3.1.1] - 2026-09-18
 
 - **Fixed: every `original lyrics` cover stopped before the first note.** The bundled

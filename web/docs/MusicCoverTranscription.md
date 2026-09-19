@@ -17,6 +17,12 @@ lyric text. Use the *original lyrics* cover mode (Whisper) to transcribe the
 original words, or supply words in the brief. An empty transcription stops the
 cover run with an error.
 
+Before the graph is built, the selected file is decoded once end to end. A file whose
+decoder gives up - a truncated download, or a broken frame in the middle - is refused
+with a message naming the file and how far it got, instead of failing later inside
+ComfyUI's `LoadAudio` with a traceback that names nothing. A normal song costs about
+0.2 s to check. See [troubleshooting](../../TROUBLESHOOTING.md#a-cover-run-dies-with-invaliddataerror-or-header-missing).
+
 ## Inputs
 
 - **model_profile_json** - decides whether anything is transcribed at all: only a YuE2 Cover

@@ -20,10 +20,12 @@ LOGGER = get_logger("cover_lyrics")
 WHISPER_SAMPLE_RATE = 16000
 
 # On-disk directory names inside ``models/audio_encoders``.  The catalog in
-# ``models_config.json`` writes the pinned ``whisper-large-v3`` folder, so the
-# dropdown value, the download target and the loader never disagree.  The
-# dropdown is derived from that catalog (see ``whisper_model_choices``), so it
-# only ever offers a checkpoint the check node can actually obtain.
+# ``models_config.json`` writes the pinned ``whisper-large-v3`` folder (and the smaller
+# turbo folders beside it), so the dropdown value, the download target and the loader
+# never disagree.  The dropdown is derived from that catalog (see
+# ``whisper_model_choices``).  The model *fetch* happens where the model was chosen:
+# ``fetch_whisper_model`` pulls the folder of the selected checkpoint when it is missing,
+# while the model check keeps downloading only the default one.
 CATALOG_WHISPER_MODELS = ("whisper-large-v3",)
 DEFAULT_WHISPER_MODEL = "whisper-large-v3"
 # Kept as the historic name for callers/tests that import it.
@@ -95,6 +97,80 @@ def normalize_whisper_language(value) -> Optional[str]:
             "Use the language of the source audio, not the desired new lyrics."
         )
     return code
+
+def whisper_checkpoint_ready(model_dir: Path) -> bool:
+    """Whether a Whisper folder holds the file ``faster_whisper`` needs first."""
+    return (Path(model_dir) / "model.bin").is_file()
+
+
+def _catalog_checkpoint_folder(model: str) -> Optional[Path]:
+    """The folder the catalog writes for this model name, or ``None`` if it is unknown."""
+    from .model_downloader import comfy_models_dir, load_models_config
+
+    name = str(model or "").strip()
+    if not name:
+        return None
+    try:
+        group = (load_models_config() or {}).get("whisper", {}) or {}
+    except Exception as exc:  # pragma: no cover - a broken catalog is not fatal here
+        LOGGER.debug("Could not read the Whisper checkpoint catalog: %s", exc)
+        return None
+    for entry in group.get("files", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        target = str(entry.get("target") or group.get("target") or "").replace("\\", "/")
+        parts = [part for part in target.split("/") if part]
+        if len(parts) >= 3 and parts[0] == "models" and parts[-1] == name:
+            return comfy_models_dir() / "audio_encoders" / name
+    return None
+
+
+def fetch_whisper_model(model: str, model_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Fetch the selected checkpoint from the catalog when its folder is empty.
+
+    The model check downloads the catalog's *default* checkpoint (``whisper-large-v3``).
+    A different model chosen in the dropdown has its own folder and its own entries, and
+    the group toggles deliberately skip those: one checkbox must not pull in two or three
+    whisper checkpoints. The fetch therefore happens here, where the model was actually
+    chosen - the same rule the LLM node applies to a selected GGUF.
+
+    Only the folder the catalog itself would write is fetched. A caller-provided path -
+    a custom checkpoint folder, or a test - is never written to, and an unknown model
+    name returns an empty report so the caller can report the missing checkpoint instead
+    of inventing a download.
+    """
+    from .model_downloader import check_file_entries, load_models_config
+
+    folder = Path(model_dir) if model_dir is not None else whisper_model_dir(model)
+    if whisper_checkpoint_ready(folder):
+        return []
+    expected = _catalog_checkpoint_folder(model)
+    if expected is None or Path(expected) != folder:
+        return []
+    config = load_models_config() or {}
+    group = config.get("whisper", {}) or {}
+    entries: List[Dict[str, Any]] = []
+    for entry in group.get("files", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        target = str(entry.get("target") or group.get("target") or "").replace("\\", "/")
+        parts = [part for part in target.split("/") if part]
+        if len(parts) >= 3 and parts[0] == "models" and parts[-1] == folder.name:
+            entries.append({**entry, "target": target})
+    if not entries:
+        return []
+    LOGGER.info(
+        "Whisper checkpoint '%s' is not installed; fetching it from the model catalog (%d files).",
+        folder.name, len(entries),
+    )
+    report = check_file_entries(entries, base_path=None, auto_download=True)
+    for item in report:
+        if item.get("status") == "failed":
+            LOGGER.warning("Could not fetch %s: %s", item.get("name"), item.get("message"))
+    if whisper_checkpoint_ready(folder):
+        LOGGER.info("Whisper checkpoint '%s' is ready.", folder.name)
+    return report
+
 
 _MISSING_ENGINE_MESSAGE = (
     "YuE2 Cover: new/original lyrics need the optional Whisper engine 'faster-whisper', "
@@ -300,12 +376,15 @@ def transcribe(
     from .whisper_worker import WhisperCancelled
     forced_language = normalize_whisper_language(language)
     model_dir = whisper_model_dir(model)
+    if not whisper_checkpoint_ready(model_dir) and _catalog_checkpoint_folder(model) == model_dir:
+        fetch_whisper_model(model, model_dir)
     if not model_dir.is_dir():
         raise RuntimeError(
             f"YuE2 Cover: Whisper checkpoint folder '{model_dir}' does not exist. Keep "
             "'whisper models' enabled in the model check node and run it once to download "
-            f"the pinned {DEFAULT_WHISPER_MODEL} files, or add another CTranslate2 checkpoint "
-            "to the whisper group in models_config.json so it appears in this list too."
+            f"the pinned {DEFAULT_WHISPER_MODEL} files, or select another model from the "
+            "dropdown (every folder of the whisper group in models_config.json appears there, "
+            "and the node fetches the selected one on demand)."
         )
 
     samples = None

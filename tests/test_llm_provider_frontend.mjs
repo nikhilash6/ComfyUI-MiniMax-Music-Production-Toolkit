@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
-import { visible, refresh, settings, signature, INTEGRATED, LOCAL, CLOUD, BUTTONS } from "../web/llm_provider_ui.js";
+import { visible, refresh, settings, signature, INTEGRATED, LOCAL, CLOUD, BUTTONS, PROVIDER_NODES } from "../web/llm_provider_ui.js";
 import { removeLegacyLLMSessionInput } from "../web/migration_utils.js";
 import { applyTooltip } from "../web/prompt_ui_utils.js";
+
+// The provider UI is driven by widget name, so a node that is missing from this set
+// shows raw widget names and no buttons at all. The central settings node must be in
+// it: it holds the same provider/model fields for every LLM call in a run.
+for (const type of ["MiniMaxLLMChat", "MiniMaxLLMSettings"]) {
+    assert.ok(PROVIDER_NODES.has(type), `${type} must get the provider labels, visibility and buttons`);
+}
 
 // Every action button must carry help text; a canvas button has no label
 // attribute of its own, so the tooltip is the only explanation available.
@@ -27,6 +34,8 @@ for (const mode of [INTEGRATED, LOCAL, CLOUD]) {
     assert.equal(visible("credential_id", mode, true), false);
     assert.equal(visible("model", mode), mode === INTEGRATED);
     assert.equal(visible("remote_model", mode), mode !== INTEGRATED);
+    assert.equal(visible("permanent_key", mode), mode !== INTEGRATED,
+        "the key switch belongs to a connection, so it lives with the other remote fields");
     assert.equal(visible("local_provider", mode), mode === LOCAL);
     assert.equal(visible("cloud_provider", mode), mode === CLOUD);
     assert.equal(visible("n_gpu_layers", mode), false);
